@@ -1,0 +1,162 @@
+name: Mobile UAT Auto Deploy
+run-name: Mobile UAT server deploy after release
+
+on:
+  workflow_run:
+    workflows: ['Mobile UAT Release']
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-uat-server-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    name: Publish successful UAT release to server
+    runs-on: ubuntu-latest
+    environment: uat
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_COMMIT: ${{ github.event.workflow_run.head_sha }}
+      SSH_HOST: ${{ secrets.DSE_SSH_HOST }}
+      SSH_USER: ${{ secrets.DSE_SSH_USER }}
+      SSH_KEY: ${{ secrets.DSE_SSH_PRIVATE_KEY }}
+      SSH_KNOWN_HOSTS: ${{ secrets.DSE_SSH_KNOWN_HOSTS }}
+      SSH_PORT: ${{ vars.DSE_SSH_PORT }}
+      SSH_DEPLOY_ENABLED: ${{ vars.DSE_MOBILE_UAT_DEPLOY_ENABLED }}
+      PUBLIC_BASE_URL: https://api-uat.jasviindustries.in/mobile/android/uat
+    steps:
+      - name: Check UAT server deployment gate
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${SSH_DEPLOY_ENABLED:-}" == 'true' ]]; then
+            echo 'enabled=true' >> "$GITHUB_OUTPUT"
+            echo 'Automatic UAT server publication is enabled.'
+          else
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            echo 'Automatic UAT server publication is disabled; GitHub prerelease remains available only.'
+          fi
+
+      - name: Checkout exact successful release source
+        if: steps.gate.outputs.enabled == 'true'
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Resolve and validate UAT prerelease
+        if: steps.gate.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_VERSION="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' mobile-source/DSE-ERP-Mobile/androidApp/build.gradle.kts | head -1)"
+          [[ "$SOURCE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "Invalid source version: $SOURCE_VERSION" >&2
+            exit 1
+          }
+          VERSION="$SOURCE_VERSION"
+          TAG="v${VERSION}"
+          git fetch origin --tags --force
+          TAG_COMMIT="$(git rev-list -n 1 "$TAG")"
+          [[ "$TAG_COMMIT" == "$RELEASE_COMMIT" ]] || {
+            echo "Release tag $TAG does not point at successful release commit $RELEASE_COMMIT" >&2
+            exit 1
+          }
+          IS_PRERELEASE="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq '.isPrerelease')"
+          [[ "$IS_PRERELEASE" == 'true' ]] || {
+            echo "Release $TAG must still be a UAT prerelease." >&2
+            exit 1
+          }
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: Download exact UAT release assets
+        if: steps.gate.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p deploy-artifacts
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --dir deploy-artifacts \
+            --pattern "Jasvi-Mobile-${VERSION}-UAT.apk" \
+            --pattern "Jasvi-Mobile-${VERSION}-UAT.apk.sha256"
+          APK="deploy-artifacts/Jasvi-Mobile-${VERSION}-UAT.apk"
+          SHA_FILE="$APK.sha256"
+          EXPECTED_SHA="$(awk 'NR==1 {print tolower($1)}' "$SHA_FILE")"
+          ACTUAL_SHA="$(sha256sum "$APK" | awk '{print tolower($1)}')"
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{64}$ ]] || { echo 'Invalid checksum file.' >&2; exit 1; }
+          [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" ]] || {
+            echo "Downloaded APK checksum mismatch: expected=$EXPECTED_SHA actual=$ACTUAL_SHA" >&2
+            exit 1
+          }
+          echo "EXPECTED_SHA=$EXPECTED_SHA" >> "$GITHUB_ENV"
+
+      - name: Validate and configure SSH
+        if: steps.gate.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in SSH_HOST SSH_USER SSH_KEY SSH_KNOWN_HOSTS; do
+            [[ -n "${!name:-}" ]] || { echo "Missing GitHub uat environment SSH secret: $name" >&2; exit 1; }
+          done
+          echo "SSH_PORT=${SSH_PORT:-22}" >> "$GITHUB_ENV"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/dse_mobile_deploy_key
+          chmod 600 ~/.ssh/dse_mobile_deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Publish UAT APK through SSH
+        if: steps.gate.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/dse_mobile_deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=yes \
+            "$SSH_USER@$SSH_HOST" 'mkdir -p /tmp/dse-mobile-ci-deploy'
+          scp -i ~/.ssh/dse_mobile_deploy_key -P "$SSH_PORT" -o StrictHostKeyChecking=yes \
+            "deploy-artifacts/Jasvi-Mobile-${VERSION}-UAT.apk" \
+            "deploy-artifacts/Jasvi-Mobile-${VERSION}-UAT.apk.sha256" \
+            scripts/mobile/deploy-mobile-apk.sh \
+            "$SSH_USER@$SSH_HOST:/tmp/dse-mobile-ci-deploy/"
+          ssh -i ~/.ssh/dse_mobile_deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=yes \
+            "$SSH_USER@$SSH_HOST" \
+            "bash /tmp/dse-mobile-ci-deploy/deploy-mobile-apk.sh uat /tmp/dse-mobile-ci-deploy/Jasvi-Mobile-${VERSION}-UAT.apk /tmp/dse-mobile-ci-deploy/Jasvi-Mobile-${VERSION}-UAT.apk.sha256 '${VERSION}'"
+
+      - name: Verify public UAT APK and checksum
+        if: steps.gate.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          PUBLIC_APK="$PUBLIC_BASE_URL/Jasvi-Mobile-${VERSION}-UAT.apk"
+          curl --fail --location --silent --show-error --max-time 120 "$PUBLIC_APK" -o published-uat.apk
+          ACTUAL_SHA="$(sha256sum published-uat.apk | awk '{print tolower($1)}')"
+          [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" ]] || {
+            echo "Public UAT APK checksum mismatch: expected=$EXPECTED_SHA actual=$ACTUAL_SHA" >&2
+            exit 1
+          }
+          SHA_BODY="$(curl --fail --silent --show-error --max-time 20 "$PUBLIC_APK.sha256")"
+          PUBLISHED_SHA="$(printf '%s\n' "$SHA_BODY" | awk 'NR==1 {print tolower($1)}')"
+          [[ "$PUBLISHED_SHA" == "$EXPECTED_SHA" ]] || {
+            echo "Public UAT checksum mismatch: expected=$EXPECTED_SHA published=$PUBLISHED_SHA" >&2
+            exit 1
+          }
+          echo "MOBILE_UAT_AUTO_DEPLOY_OK version=$VERSION sha256=$EXPECTED_SHA"
+
+      - name: Clean remote staging
+        if: always() && steps.gate.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          if [[ -f ~/.ssh/dse_mobile_deploy_key ]]; then
+            ssh -i ~/.ssh/dse_mobile_deploy_key -p "${SSH_PORT:-22}" -o StrictHostKeyChecking=yes \
+              "$SSH_USER@$SSH_HOST" 'rm -rf /tmp/dse-mobile-ci-deploy' || true
+          fi
