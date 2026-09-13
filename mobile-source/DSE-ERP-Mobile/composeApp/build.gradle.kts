@@ -1,10 +1,14 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 
+val isWindows = System.getProperty("os.name")
+    .startsWith("Windows", ignoreCase = true)
+
 plugins {
     kotlin("multiplatform")
     id("org.jetbrains.compose")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.android.kotlin.multiplatform.library")
 }
 
 kotlin {
@@ -13,13 +17,30 @@ kotlin {
             jvmTarget.set(JvmTarget.JVM_21)
         }
     }
-    iosArm64()
-    iosSimulatorArm64()
 
-    targets.withType<KotlinNativeTarget>().configureEach {
-        binaries.framework {
-            baseName = "ComposeApp"
-            isStatic = true
+    android {
+        namespace = "org.dse.mobile.compose"
+        compileSdk = 36
+        minSdk = 26
+
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
+        }
+
+        androidResources {
+            enable = true
+        }
+    }
+
+    if (!isWindows) {
+        iosArm64()
+        iosSimulatorArm64()
+
+        targets.withType<KotlinNativeTarget>().configureEach {
+            binaries.framework {
+                baseName = "ComposeApp"
+                isStatic = true
+            }
         }
     }
 
@@ -32,6 +53,7 @@ kotlin {
             implementation(compose.materialIconsExtended)
             implementation(compose.ui)
         }
+
         jvmMain.dependencies {
             implementation(compose.desktop.currentOs)
             implementation("org.apache.poi:poi:5.4.1")

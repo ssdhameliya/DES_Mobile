@@ -1,6 +1,6 @@
 package org.dse.mobile.core.api
 
-/** M0 in-memory contract. M1 iOS implementation will persist tokens in Keychain. */
+/** Platform session contract. Native mobile targets persist bearer tokens using OS-protected credential storage. */
 interface SessionStore {
     fun accessToken(): String?
     fun saveAccessToken(token: String?)

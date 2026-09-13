@@ -35,7 +35,7 @@ private fun ImportModule.supportsStrategy()=this in setOf(ImportModule.ITEMS,Imp
  fun refresh(){status=OfflineRepository.status();queue=OfflineRepository.queue()}
  Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).verticalScroll(rememberScrollState()).padding(14.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
   PremiumCard(Modifier.fillMaxWidth(),padding=15.dp){
-   Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(11.dp)){PremiumIconTile(Icons.Rounded.Sync,DseSuccess,size=48.dp);Column(Modifier.weight(1f)){Text("Sync Center",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.ExtraBold);Text("Offline resilience, local queue and iOS system features",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
+   Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(11.dp)){PremiumIconTile(Icons.Rounded.Sync,DseSuccess,size=48.dp);Column(Modifier.weight(1f)){Text("Sync Center",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.ExtraBold);Text("Offline resilience, local queue and ${platformName()} system features",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
   }
   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){DseMetricTile("Cached Views",status.cachedEntries.toString(),Icons.Rounded.OfflineBolt,Modifier.weight(1f),DseInfo);DseMetricTile("Pending Local",status.pendingMutations.toString(),Icons.Rounded.Sync,Modifier.weight(1f),if(status.pendingMutations>0)DseWarning else DseSuccess)}
   DseSection("Offline Read Cache",Icons.Rounded.OfflineBolt){
@@ -44,7 +44,7 @@ private fun ImportModule.supportsStrategy()=this in setOf(ImportModule.ITEMS,Imp
    PremiumSecondaryButton(if(clearing)"Confirm Clear Cache" else "Clear Cache",{if(clearing){OfflineRepository.clearCache();clearing=false;refresh();msg="Offline read cache cleared"}else clearing=true},Modifier.fillMaxWidth(),icon=Icons.Rounded.DeleteSweep)
   }
   DseSection("Pending Local Sync",Icons.Rounded.Sync){
-   Text("CREATE retries are manual because the current v9.0.92 contract does not expose an idempotency key for every write. This prevents silent duplicate documents.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+   Text("CREATE retries are manual because the current v10.0.5 contract does not expose an idempotency key for every write. This prevents silent duplicate documents.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
    if(queue.isEmpty())Text("No pending local changes",color=DseSuccess,fontWeight=FontWeight.SemiBold) else queue.forEach{item->
     PremiumCard(Modifier.fillMaxWidth(),padding=11.dp){
      Text(item.label,fontWeight=FontWeight.Bold)
@@ -57,10 +57,10 @@ private fun ImportModule.supportsStrategy()=this in setOf(ImportModule.ITEMS,Imp
     }
    }
   }
-  DseSection("iOS System Experience",Icons.Rounded.PhoneIphone){
+  DseSection("${platformName()} System Experience",if(platformName()=="Android") Icons.Rounded.PhoneAndroid else Icons.Rounded.PhoneIphone){
    Text(platformPushCapability(),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-   PremiumPrimaryButton("Enable Notifications",{scope.launch{val x=platformRequestPushNotifications();msg=if(x.granted)"iOS notification permission enabled. Jasvi Industries v9.0.92 does not expose device-token registration, so remote ERP push delivery is not claimed by this build." else x.message}},Modifier.fillMaxWidth(),leadingIcon=Icons.Rounded.NotificationsActive)
-   Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){Switch(widget,{widget=it;OfflineRepository.setWidgetSharingEnabled(it);if(!it)platformPublishWidgetSnapshot(WidgetDashboardSnapshot(updatedAtMillis=platformOfflineNowMillis()))});Text("Share authenticated dashboard KPIs with iOS widget")}
+   PremiumPrimaryButton("Enable Notifications",{scope.launch{val x=platformRequestPushNotifications();msg=if(x.granted)"${platformName()} notification permission enabled. Jasvi Industries v10.0.5 does not expose device-token registration, so remote ERP push delivery is not claimed by this build." else x.message}},Modifier.fillMaxWidth(),leadingIcon=Icons.Rounded.NotificationsActive)
+   Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){Switch(widget,{widget=it;OfflineRepository.setWidgetSharingEnabled(it);if(!it)platformPublishWidgetSnapshot(WidgetDashboardSnapshot(updatedAtMillis=platformOfflineNowMillis()))});Text("Share authenticated dashboard KPIs with ${platformName()} widget")}
    Text("Widgets and shortcuts are read-only presentation features and never alter business document state.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
   }
   if(msg.isNotBlank())Surface(shape=MaterialTheme.shapes.medium,color=MaterialTheme.colorScheme.primaryContainer.copy(.45f),modifier=Modifier.fillMaxWidth()){Text(msg,Modifier.padding(11.dp),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
@@ -74,7 +74,7 @@ private fun ImportModule.supportsStrategy()=this in setOf(ImportModule.ITEMS,Imp
  var strategy by remember{mutableStateOf(ImportStrategy.CREATE_ONLY)}
  var dry by remember{mutableStateOf(true)}
  var busy by remember{mutableStateOf(false)}
- var msg by remember{mutableStateOf("Choose a module and select an Excel/CSV file. iOS accepts CSV; IntelliJ accepts Excel and CSV.")}
+ var msg by remember{mutableStateOf("Choose a module and select a file. ${platformImportFormatHint()}")}
  var dismissedMessage by remember{mutableStateOf("")}
  var confirmImport by remember{mutableStateOf(false)}
  var summary by remember{mutableStateOf<ImportExecutionSummary?>(null)}

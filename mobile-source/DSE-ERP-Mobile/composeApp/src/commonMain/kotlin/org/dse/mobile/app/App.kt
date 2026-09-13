@@ -21,9 +21,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.dse.mobile.core.api.*
 import org.dse.mobile.core.config.MobileBuildInfo
+import org.dse.mobile.core.config.MobileUpdateRequirement
+import org.dse.mobile.core.config.evaluateMobileCompatibility
 import org.dse.mobile.core.model.*
 import org.dse.mobile.core.offline.OfflineRepository
 import org.dse.mobile.core.offline.platformOfflineNowMillis
+import org.dse.mobile.core.security.MobileSecurityPolicy
 
 enum class MainTab(val label:String){DASHBOARD("Dashboard"),SALES("Sales"),PURCHASE("Purchase"),BANK("Bank Statement"),IMPORT("Import"),MORE("More")}
 enum class MoreDestination(val label:String){PURCHASE("Purchase"),QUOTATIONS("Quotations"),SALES_RETURNS("Sales Returns"),PURCHASE_RETURNS("Purchase Returns"),MASTERS("Master Data"),INVENTORY("Inventory"),PURCHASE_RECON("Purchase Reconciliation"),COMMUNICATIONS("Communication Center"),REMINDERS("Reminders"),NOTIFICATIONS("Notifications"),REPORTS("Reports"),PROFILE("Profile & Password"),ADMIN("User Access & Roles"),IMPORT("Data Import"),SYNC("Sync Center"),ABOUT("About")}
@@ -54,7 +57,7 @@ data class PermissionContext(val user:UserPayload?,val permissions:List<Effectiv
      }}
      else->message="Server contract check failed. ${runtime.readableMessage()}"
     }
-   },{val probe=DseErpHttpClient(serverUrl,InMemorySessionStore());val r=probe.runtimeHealth();probe.close();message=when(r){is ApiResult.Success->{BusinessDateContext.update(r.value.businessDate,r.value.businessZone);runtimeCompatibilityProblem(r.value)?:"Connected: ${r.value.service} ${r.value.version} • ${r.value.message}"};else->r.readableMessage()}},{
+   },{val probe=DseErpHttpClient(serverUrl,InMemorySessionStore());val r=probe.runtimeHealth();probe.close();message=when(r){is ApiResult.Success->{BusinessDateContext.update(r.value.businessDate,r.value.businessZone);runtimeCompatibilityProblem(r.value)?:mobileOptionalUpdateNotice(r.value)?.let{"Connected: ${r.value.service} ${r.value.version} • $it"}?:"Connected: ${r.value.service} ${r.value.version} • ${r.value.message}"};else->r.readableMessage()}},{
     val auth=platformAuthenticateBiometric("Unlock Jasvi Industries Mobile")
     if(!auth.success)message=auth.message.ifBlank{"Biometric unlock was not completed"} else {val a=DseErpHttpClient(serverUrl,sessions);api?.close();api=a;val runtime=a.runtimeHealth();(runtime as? ApiResult.Success)?.value?.let{BusinessDateContext.update(it.businessDate,it.businessZone)};val incompat=(runtime as? ApiResult.Success)?.value?.let(::runtimeCompatibilityProblem);if(incompat!=null)message=incompat else if(runtime !is ApiResult.Success&&runtime !is ApiResult.NetworkError)message="Server contract check failed. ${runtime.readableMessage()}" else when(val p=a.currentProfile()){
       is ApiResult.Success->{user=p.value.toUserPayload();when(val perms=a.effectivePermissions()){is ApiResult.Success->{permissions=perms.value;activateOffline(serverUrl,user,permissions);message="Unlocked securely";root=RootPage.APP};else->{message="Could not validate permissions. ${perms.readableMessage()}";a.logout();sessions.clear();saved=false}}}
@@ -71,20 +74,44 @@ data class PermissionContext(val user:UserPayload?,val permissions:List<Effectiv
 }
 
 private fun normalizeInitialServerUrl(saved:String?):String{
+ val defaultUrl=MobileBuildInfo.DEFAULT_DEV_SERVER_URL
+ if(!MobileBuildInfo.SERVER_EDITING_ALLOWED)return defaultUrl
  val value=saved?.trim().orEmpty()
  return when{
-  value.isBlank()->MobileBuildInfo.UAT_SERVER_URL
-  value.equals(MobileBuildInfo.LEGACY_TEST_SERVER_URL,ignoreCase=true)->MobileBuildInfo.UAT_SERVER_URL
+  value.isBlank()->defaultUrl
+  value.equals(MobileBuildInfo.LEGACY_TEST_SERVER_URL,ignoreCase=true)->defaultUrl
+  MobileSecurityPolicy.endpointProblem(value)!=null->defaultUrl
   else->value
  }
 }
 
-private fun runtimeCompatibilityProblem(status:RuntimeHealthResponse):String?=when{
- !status.ready->"Jasvi Industries server is not ready: ${status.message.ifBlank{"database health check failed"}}"
- status.service!=MobileBuildInfo.EXPECTED_SERVER_SERVICE->"This address is not the expected Jasvi Industries server (${status.service.ifBlank{"unknown service"}})."
- status.apiRevision!=MobileBuildInfo.EXPECTED_API_REVISION->"Jasvi Industries API revision mismatch. Mobile requires ${MobileBuildInfo.EXPECTED_API_REVISION}; server reports ${status.apiRevision.ifBlank{"unknown"}}."
- compareServerVersion(status.version,MobileBuildInfo.SERVER_BASELINE)<0->"Mobile ${MobileBuildInfo.MOBILE_VERSION} requires Jasvi Industries ${MobileBuildInfo.SERVER_BASELINE} or newer with API revision ${MobileBuildInfo.EXPECTED_API_REVISION}; server reports ${status.version.ifBlank{"unknown"}}."
- else->null
+private fun runtimeCompatibilityProblem(status:RuntimeHealthResponse):String?{
+ val baseProblem=when{
+  !status.ready->"Jasvi Industries server is not ready: ${status.message.ifBlank{"database health check failed"}}"
+  status.service!=MobileBuildInfo.EXPECTED_SERVER_SERVICE->"This address is not the expected Jasvi Industries server (${status.service.ifBlank{"unknown service"}})."
+  status.apiRevision!=MobileBuildInfo.EXPECTED_API_REVISION->"Jasvi Industries API revision mismatch. Mobile requires ${MobileBuildInfo.EXPECTED_API_REVISION}; server reports ${status.apiRevision.ifBlank{"unknown"}}."
+  status.environment.isNotBlank()&&!status.environment.equals(MobileBuildInfo.expectedEnvironment(),true)->"This ${MobileBuildInfo.RELEASE_CHANNEL} app cannot sign in to the ${status.environment} environment."
+  compareServerVersion(status.version,MobileBuildInfo.MINIMUM_COMPATIBLE_SERVER_VERSION)<0->"Mobile ${MobileBuildInfo.MOBILE_VERSION} requires compatible server ${MobileBuildInfo.MINIMUM_COMPATIBLE_SERVER_VERSION} or newer with API revision ${MobileBuildInfo.EXPECTED_API_REVISION}; server reports ${status.version.ifBlank{"unknown"}}."
+  else->null
+ }
+ if(baseProblem!=null)return baseProblem
+ val mobile=evaluateMobileCompatibility(status,platformName())
+ return if(mobile.requirement==MobileUpdateRequirement.REQUIRED_UPDATE)
+  "${platformName()} Mobile ${mobile.currentVersion} is no longer supported by this server. Minimum supported mobile version is ${mobile.minimumVersion}; latest available is ${mobile.latestVersion}. Update the mobile app before signing in."
+ else null
+}
+
+private fun mobileOptionalUpdateNotice(status:RuntimeHealthResponse):String?{
+ val mobile=evaluateMobileCompatibility(status,platformName())
+ return if(mobile.requirement==MobileUpdateRequirement.OPTIONAL_UPDATE)
+  "Optional mobile update: ${mobile.latestVersion} is available. Your ${mobile.currentVersion} remains supported, so you can continue and update when convenient."
+ else null
+}
+
+private fun mobileUpdateVersion(message:String):String?{
+ val optional=Regex("""Optional mobile update:\s*([0-9]+(?:\.[0-9]+){1,3})""",RegexOption.IGNORE_CASE).find(message)?.groupValues?.getOrNull(1)
+ if(!optional.isNullOrBlank())return optional
+ return Regex("""latest available is\s*([0-9]+(?:\.[0-9]+){1,3})""",RegexOption.IGNORE_CASE).find(message)?.groupValues?.getOrNull(1)
 }
 
 private fun compareServerVersion(actual:String,minimum:String):Int{
@@ -100,14 +127,14 @@ private fun activateOffline(server:String,user:UserPayload?,permissions:List<Eff
  LaunchedEffect(server){
   val started=platformOfflineNowMillis()
   val probe=DseErpHttpClient(server,InMemorySessionStore())
-  val result=try{withTimeoutOrNull(3_500){probe.runtimeHealth()}}finally{probe.close()}
+  val result=try{withTimeoutOrNull(10_000){probe.runtimeHealth()}}finally{probe.close()}
   val outcome=when(result){
    is ApiResult.Success->{
     BusinessDateContext.update(result.value.businessDate,result.value.businessZone)
-    runtimeCompatibilityProblem(result.value) ?: "Connected: ${result.value.service} ${result.value.version} • ${result.value.message}"
+    runtimeCompatibilityProblem(result.value) ?: mobileOptionalUpdateNotice(result.value)?.let{"Connected: ${result.value.service} ${result.value.version} • $it"} ?: "Connected: ${result.value.service} ${result.value.version} • ${result.value.message}"
    }
-   null->"UAT server unavailable. Connection check timed out."
-   else->"UAT server unavailable. ${result.readableMessage()}"
+   null->"${MobileBuildInfo.RELEASE_CHANNEL} server unavailable. Connection check timed out."
+   else->"${MobileBuildInfo.RELEASE_CHANNEL} server unavailable. ${result.readableMessage()}"
   }
   status=if(outcome.startsWith("Connected:",ignoreCase=true))"Workspace ready" else "Secure sign in ready"
   val elapsed=platformOfflineNowMillis()-started
@@ -154,9 +181,13 @@ private fun friendlyLoginMessage(message:String):String{
  val serverMessage=Regex("\"message\"\\s*:\\s*\"([^\"]+)\"").find(message)?.groupValues?.getOrNull(1)?.replace("\\n"," ")?.replace("\\\"","\"")?.trim()
  return when{
   message.isBlank()->""
-  message.startsWith("Connected:",ignoreCase=true)->"UAT server online • Jasvi Industries ${MobileBuildInfo.SERVER_BASELINE}"
-  message.contains("Network error",ignoreCase=true)->"Unable to reach the UAT server. Check your internet connection or Server Settings."
-  message.contains("No such host",ignoreCase=true)->"The UAT server address could not be resolved. Open Server Settings and verify the address."
+  message.startsWith("Connected:",ignoreCase=true)->{
+   val connectedVersion=Regex("""Connected:\s+\S+\s+([0-9][0-9A-Za-z._-]*)""").find(message)?.groupValues?.getOrNull(1)
+   val optional=message.substringAfter("•","").trim().takeIf{it.startsWith("Optional mobile update:",ignoreCase=true)}
+   "${MobileBuildInfo.RELEASE_CHANNEL} server online • Jasvi Industries ${connectedVersion?.takeIf{it.isNotBlank()}?:MobileBuildInfo.SERVER_BASELINE}${optional?.let{" • $it"}.orEmpty()}"
+  }
+  message.contains("Network error",ignoreCase=true)->"Unable to reach the ${MobileBuildInfo.RELEASE_CHANNEL} server. Check your internet connection or Server Settings."
+  message.contains("No such host",ignoreCase=true)->"The ${MobileBuildInfo.RELEASE_CHANNEL} server address could not be resolved. Open Server Settings and verify the address."
   !serverMessage.isNullOrBlank()->serverMessage
   message.startsWith("Authentication failed:",ignoreCase=true)->"Sign in failed. Check your username and password and try again."
   else->message
@@ -168,10 +199,12 @@ private fun friendlyLoginMessage(message:String):String{
  var password by remember{mutableStateOf("")}
  var serverSettings by remember{mutableStateOf(false)}
  var busy by remember{mutableStateOf(false)}
+ var localUpdateMessage by remember{mutableStateOf("")}
  val scope=rememberCoroutineScope()
- val feedback=friendlyLoginMessage(message)
- val positive=feedback.startsWith("UAT server online",ignoreCase=true)||feedback.startsWith("Connected",ignoreCase=true)||feedback.startsWith("Unlocked",ignoreCase=true)
- val errorLike=feedback.contains("failed",ignoreCase=true)||feedback.contains("unable",ignoreCase=true)||feedback.contains("invalid",ignoreCase=true)||feedback.contains("mismatch",ignoreCase=true)||feedback.contains("not ready",ignoreCase=true)||feedback.contains("unavailable",ignoreCase=true)
+ val feedback=localUpdateMessage.ifBlank{friendlyLoginMessage(message)}
+ val updateVersion=mobileUpdateVersion(message)
+ val positive=feedback.startsWith("${MobileBuildInfo.RELEASE_CHANNEL} server online",ignoreCase=true)||feedback.startsWith("Connected",ignoreCase=true)||feedback.startsWith("Unlocked",ignoreCase=true)||feedback.startsWith("APK verified",ignoreCase=true)
+ val errorLike=feedback.contains("failed",ignoreCase=true)||feedback.contains("unable",ignoreCase=true)||feedback.contains("invalid",ignoreCase=true)||feedback.contains("mismatch",ignoreCase=true)||feedback.contains("not ready",ignoreCase=true)||feedback.contains("unavailable",ignoreCase=true)||feedback.contains("no longer supported",ignoreCase=true)
 
  PremiumBackdrop{
   BoxWithConstraints(Modifier.fillMaxSize()){
@@ -249,6 +282,21 @@ private fun friendlyLoginMessage(message:String):String{
       }
      }
 
+     if(updateVersion!=null&&platformName().equals("Android",true)){
+      PremiumPrimaryButton(
+       text=if(busy)"Preparing update…" else "Update Now • $updateVersion",
+       enabled=!busy,
+       onClick={scope.launch{
+        busy=true
+        val update=platformInstallMobileUpdate(updateVersion)
+        localUpdateMessage=update.message
+        busy=false
+       }},
+       modifier=Modifier.fillMaxWidth(),
+       leadingIcon=Icons.Rounded.Download,
+      )
+     }
+
      Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.Center,verticalAlignment=Alignment.CenterVertically){
       Text("Need a Jasvi account?",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
       TextButton(enabled=!busy,onClick=onRegister){Text("Register")}
@@ -266,10 +314,10 @@ private fun friendlyLoginMessage(message:String):String{
  if(serverSettings){
   PremiumAlertDialog(
    onDismissRequest={serverSettings=false},
-   title={Text("UAT Server Settings")},
+   title={Text("${MobileBuildInfo.RELEASE_CHANNEL} Server Settings")},
    text={Column(verticalArrangement=Arrangement.spacedBy(10.dp)){
-    Text("Connection settings are hidden from normal sign-in. Change this only for UAT diagnostics.",style=MaterialTheme.typography.bodySmall)
-    DseField("ERP server URL",server,singleLine=true,required=true,onValue=onServer)
+    Text(if(MobileBuildInfo.SERVER_EDITING_ALLOWED)"Connection settings are available for controlled ${MobileBuildInfo.RELEASE_CHANNEL} diagnostics. The opposite environment remains blocked." else "Production server routing is locked by the signed PROD build.",style=MaterialTheme.typography.bodySmall)
+    DseField("ERP server URL",server,singleLine=true,required=true,readOnly=!MobileBuildInfo.SERVER_EDITING_ALLOWED,onValue=onServer)
     UatStatusPill(if(errorLike)false else if(positive)true else null)
    }},
    confirmButton={PremiumPrimaryButton("Test Connection",{scope.launch{busy=true;onHealth();busy=false}},enabled=!busy,leadingIcon=Icons.Rounded.WifiTethering)},
@@ -308,7 +356,7 @@ private fun friendlyLoginMessage(message:String):String{
  PremiumAlertDialog(onDismissRequest=onClose,title={Text("Reset Password")},text={Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
   if(challenge.isBlank()){
    DseField("Username / email",identity,singleLine=true,required=true,onValue={identity=it})
-   Text("Jasvi Industries 9.0.92 sends a verification code to the registered email.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+   Text("Jasvi Industries 10.0.5 sends a verification code to the registered email.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
   } else {
    DseField("Email Verification Code",otp,singleLine=true,required=true,onValue={otp=it})
    DseField("Authenticator Code",totp,singleLine=true,supporting="Required when MFA is enrolled for this account",onValue={totp=it})
@@ -356,7 +404,7 @@ private fun friendlyLoginMessage(message:String):String{
      DseField("Answer",captchaAnswer,singleLine=true,required=true,icon=Icons.Rounded.VerifiedUser,onValue={captchaAnswer=it})
      TextButton(enabled=!busy,onClick={scope.launch{refreshCaptcha()}}){Icon(Icons.Rounded.Refresh,null);Spacer(Modifier.width(6.dp));Text("Refresh CAPTCHA")}
     }}
-    Text("Jasvi Industries 9.0.92 requires email verification, authenticator enrollment and administrator approval before first sign-in.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    Text("Jasvi Industries 10.0.5 requires email verification, authenticator enrollment and administrator approval before first sign-in.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
    }
    2->{
     Text("Email verification",style=MaterialTheme.typography.titleMedium)

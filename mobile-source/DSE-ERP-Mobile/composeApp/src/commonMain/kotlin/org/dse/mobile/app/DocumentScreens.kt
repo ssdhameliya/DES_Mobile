@@ -100,7 +100,7 @@ private fun SalesDocumentCard(record:SaleRecord,onActions:()->Unit,onClick:()->U
         when(val health=api.health()){
             is ApiResult.NetworkError->{
                 if(create){
-                    msg="ERP is offline. New Sales are kept on screen and are not queued automatically because v9.0.92 has no idempotency key. Reconnect and press Save again."
+                    msg="ERP is offline. New Sales are kept on screen and are not queued automatically because v10.0.5 has no idempotency key. Reconnect and press Save again."
                 }else{
                     OfflineRepository.enqueueSale(record,false)
                     msg="Pending Local Sync — this row-versioned Sale update was not sent because ERP is offline."
@@ -234,7 +234,7 @@ private fun SalesDocumentCard(record:SaleRecord,onActions:()->Unit,onClick:()->U
     returning?.let{r->ReturnCreateDialog(api,ReturnSource("SALE",r.invoiceNo,r.customer?.id?:0,r.customer?.name.orEmpty(),r.lines),{returning=null}){msg=it;returning=null;refresh++}}
     reject?.let{r->ReasonDialog("Reject Sale","Reason",{reject=null}){reason->scope.launch{when(val x=api.saleAction(r.invoiceNo,"reject",reason)){is ApiResult.Success->{msg=x.value.message;reject=null;refresh++};else->msg=x.readableMessage()}}}}
     email?.let{r->BusinessEmailDialog(api,"SALE",r.id?:0,r.invoiceNo,r.customer?.email.orEmpty(),businessEmailBody(r.businessDocument()),username,r.businessDocument(),{email=null}){msg=it;email=null;refresh++}}
-    confirm?.let{(action,r)->ConfirmDialog(if(action=="delete")"Delete Sale" else "Cancel Sale",if(action=="delete")"Delete ${r.invoiceNo}? The v9.0.92 server will refuse deletion when financial or return integrity rules do not allow it." else "Cancel ${r.invoiceNo}? The server will enforce payment and return safety rules.",if(action=="delete")"Delete" else "Cancel",action=="delete",{confirm=null}){scope.launch{val x=if(action=="delete")api.deleteSale(r.invoiceNo)else api.saleAction(r.invoiceNo,"cancel");when(x){is ApiResult.Success->{msg=x.value.message;confirm=null;refresh++};else->msg=x.readableMessage()}}}}
+    confirm?.let{(action,r)->ConfirmDialog(if(action=="delete")"Delete Sale" else "Cancel Sale",if(action=="delete")"Delete ${r.invoiceNo}? The v10.0.5 server will refuse deletion when financial or return integrity rules do not allow it." else "Cancel ${r.invoiceNo}? The server will enforce payment and return safety rules.",if(action=="delete")"Delete" else "Cancel",action=="delete",{confirm=null}){scope.launch{val x=if(action=="delete")api.deleteSale(r.invoiceNo)else api.saleAction(r.invoiceNo,"cancel");when(x){is ApiResult.Success->{msg=x.value.message;confirm=null;refresh++};else->msg=x.readableMessage()}}}}
 }
 
 @Composable internal fun PurchaseWorkspace(api:DseErpHttpClient,p:PermissionContext,username:String,openTarget:RecordTarget?=null,onTargetConsumed:()->Unit={}){
@@ -259,7 +259,7 @@ private fun SalesDocumentCard(record:SaleRecord,onActions:()->Unit,onClick:()->U
     fun loadFull(row:PurchaseRecord,after:(PurchaseRecord)->Unit){scope.launch{when(val x=api.purchaseByInvoice(row.invoiceNo)){is ApiResult.Success->after(x.value);else->msg=x.readableMessage()}}}
     suspend fun save(record:PurchaseRecord,create:Boolean){
         when(val health=api.health()){
-            is ApiResult.NetworkError->{if(create){msg="ERP is offline. New Purchases are kept on screen and are not queued automatically because v9.0.92 has no idempotency key. Reconnect and press Save again."}else{OfflineRepository.enqueuePurchase(record,false);msg="Pending Local Sync — this row-versioned Purchase update was not sent because ERP is offline.";editor=null}}
+            is ApiResult.NetworkError->{if(create){msg="ERP is offline. New Purchases are kept on screen and are not queued automatically because v10.0.5 has no idempotency key. Reconnect and press Save again."}else{OfflineRepository.enqueuePurchase(record,false);msg="Pending Local Sync — this row-versioned Purchase update was not sent because ERP is offline.";editor=null}}
             is ApiResult.Success->{val result=if(create)api.createPurchase(record)else api.updatePurchase(record);when(result){is ApiResult.Success->{msg="${if(create)"Created" else "Updated"} ${result.value.invoiceNo} • ${money(result.value.totalAmount,result.value.currency?.substringBefore(' ')?:"INR")}";creating=false;editor=null;refresh++};else->msg=result.readableMessage()}}
             else->msg=health.readableMessage()
         }

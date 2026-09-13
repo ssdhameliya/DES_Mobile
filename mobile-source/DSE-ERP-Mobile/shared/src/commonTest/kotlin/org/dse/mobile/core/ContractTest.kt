@@ -103,15 +103,24 @@ class ContractTest {
     }
 
     @Test
-    fun runtimeContractDeserializes9024() = runTest {
+    fun runtimeContractDeserializes1005() = runTest {
         val engine = MockEngine {
-            respond("{\"ready\":true,\"service\":\"dse-erp-server\",\"version\":\"9.0.92\",\"apiRevision\":\"spring-security-bearer-v5\",\"buildRevision\":\"9.0.92\",\"message\":\"READY\"}", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+            respond("{\"ready\":true,\"service\":\"dse-erp-server\",\"version\":\"10.0.5\",\"apiRevision\":\"spring-security-bearer-v5\",\"buildRevision\":\"10.0.5\",\"minimumSupportedDesktopVersion\":\"10.0.4\",\"latestDesktopVersion\":\"10.0.5\",\"minimumSupportedAndroidVersion\":\"1.2.3\",\"latestAndroidVersion\":\"1.2.4\",\"minimumSupportedIosVersion\":\"1.2.3\",\"latestIosVersion\":\"1.2.4\",\"environment\":\"UAT\",\"database\":\"postgresql\",\"databaseName\":\"dse_erp_uat\",\"databaseTimeZone\":\"UTC\",\"businessZone\":\"Asia/Kolkata\",\"businessDate\":\"2026-09-12\",\"utcTime\":\"2026-09-11T22:03:30Z\",\"dateFormat\":\"dd/MM/yyyy\",\"timePolicy\":\"ISO_DATE_UTC_INSTANT\",\"message\":\"READY\"}", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
         }
         val api = DseErpHttpClient("https://test", engine = engine)
         val result = api.runtimeHealth() as ApiResult.Success<RuntimeHealthResponse>
         assertTrue(result.value.ready)
-        assertEquals("9.0.92", result.value.version)
+        assertEquals("10.0.5", result.value.version)
         assertEquals("spring-security-bearer-v5", result.value.apiRevision)
+        assertEquals("10.0.4", result.value.minimumSupportedDesktopVersion)
+        assertEquals("10.0.5", result.value.latestDesktopVersion)
+        assertEquals("1.2.3", result.value.minimumSupportedAndroidVersion)
+        assertEquals("1.2.4", result.value.latestAndroidVersion)
+        assertEquals("1.2.3", result.value.minimumSupportedIosVersion)
+        assertEquals("1.2.4", result.value.latestIosVersion)
+        assertEquals("UAT", result.value.environment)
+        assertEquals("dse_erp_uat", result.value.databaseName)
+        assertEquals("ISO_DATE_UTC_INSTANT", result.value.timePolicy)
         api.close()
     }
 

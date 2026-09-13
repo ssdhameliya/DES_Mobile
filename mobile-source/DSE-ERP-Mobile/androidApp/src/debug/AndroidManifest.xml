@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Debug-only: permits local/UAT HTTP endpoints such as the Android emulator host alias 10.0.2.2. -->
+    <application android:usesCleartextTraffic="true" />
+</manifest>

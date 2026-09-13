@@ -96,6 +96,10 @@ actual suspend fun platformAuthenticateBiometric(reason: String): BiometricAuthR
 }
 actual fun platformSecurityLabel(): String = "Protected by iOS Keychain • Face ID / Touch ID ready"
 actual fun platformImportCapability(): String = "iPhone/iPad: native Files picker • CSV import enabled"
+actual fun platformName(): String = "iOS"
+actual fun platformDeviceClassLabel(): String = "iPhone/iPad"
+actual fun platformBiometricUnlockLabel(): String = "Face ID / Touch ID"
+actual fun platformImportFormatHint(): String = "iOS accepts CSV files through the native Files picker."
 actual fun platformLocalDateIso(): String {
     val formatter=NSDateFormatter().apply { dateFormat="yyyy-MM-dd"; locale=NSLocale.currentLocale; timeZone=NSTimeZone.localTimeZone }
     return formatter.stringFromDate(NSDate())
@@ -123,13 +127,14 @@ actual suspend fun platformRequestPushNotifications(): PushPermissionResult = su
     }
 }
 actual fun platformPushCapability(): String =
-    "iOS notification permission and APNs token capture are available. Jasvi Industries v9.0.92 has no device-token registration endpoint, so remote ERP push delivery is not enabled in this build."
+    "iOS notification permission and APNs token capture are available. Jasvi Industries v10.0.5 has no device-token registration endpoint, so remote ERP push delivery is not enabled in this build."
 actual fun platformPickAttachment(onResult:(PickedAttachment)->Unit) {
     IosNativeHandlers.pickAttachment { name,base64,error -> onResult(PickedAttachment(name,base64,error)) }
 }
 actual fun platformShareText(title:String,text:String):Boolean=IosNativeHandlers.shareText(title,text)
 actual fun platformShareFile(title:String,fileName:String,data:ByteArray):Boolean=IosNativeHandlers.shareFile(title,fileName,encodeBase64Portable(data))
 actual fun platformOpenExternalUrl(url:String):Boolean=IosNativeHandlers.openExternalUrl(url)
+actual suspend fun platformInstallMobileUpdate(version: String): MobileUpdateInstallResult = MobileUpdateInstallResult(false, "Direct APK updates are available only in the Android build.")
 actual fun platformConsumeDeepLink(): String? = IosNativeHandlers.consumeDeepLink()?.takeIf { it.isNotBlank() }
 
 

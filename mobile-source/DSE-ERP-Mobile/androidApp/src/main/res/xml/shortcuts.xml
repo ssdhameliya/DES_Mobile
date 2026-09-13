@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="dashboard" android:enabled="true" android:icon="@drawable/ic_dse" android:shortcutShortLabel="@string/shortcut_dashboard" android:shortcutLongLabel="@string/shortcut_dashboard_long">
+        <intent android:action="android.intent.action.VIEW" android:data="dseerp://dashboard" android:targetPackage="org.dse.erp.mobile" android:targetClass="org.dse.mobile.android.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="sales" android:enabled="true" android:icon="@drawable/ic_dse" android:shortcutShortLabel="@string/shortcut_sales" android:shortcutLongLabel="@string/shortcut_sales_long">
+        <intent android:action="android.intent.action.VIEW" android:data="dseerp://sales" android:targetPackage="org.dse.erp.mobile" android:targetClass="org.dse.mobile.android.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="purchase" android:enabled="true" android:icon="@drawable/ic_dse" android:shortcutShortLabel="@string/shortcut_purchase" android:shortcutLongLabel="@string/shortcut_purchase_long">
+        <intent android:action="android.intent.action.VIEW" android:data="dseerp://purchase" android:targetPackage="org.dse.erp.mobile" android:targetClass="org.dse.mobile.android.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="finance" android:enabled="true" android:icon="@drawable/ic_dse" android:shortcutShortLabel="@string/shortcut_finance" android:shortcutLongLabel="@string/shortcut_finance_long">
+        <intent android:action="android.intent.action.VIEW" android:data="dseerp://finance" android:targetPackage="org.dse.erp.mobile" android:targetClass="org.dse.mobile.android.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="import" android:enabled="true" android:icon="@drawable/ic_dse" android:shortcutShortLabel="@string/shortcut_import" android:shortcutLongLabel="@string/shortcut_import_long">
+        <intent android:action="android.intent.action.VIEW" android:data="dseerp://import" android:targetPackage="org.dse.erp.mobile" android:targetClass="org.dse.mobile.android.MainActivity" />
+    </shortcut>
+</shortcuts>

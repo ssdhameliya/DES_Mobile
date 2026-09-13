@@ -2,7 +2,7 @@ package org.dse.mobile.core.model
 
 import kotlinx.serialization.Serializable
 
-// Register filter contracts mirror the v9.0.92 server query parameters.
+// Register filter contracts mirror the v10.0.5 server query parameters.
 data class SalesFilter(
     val q:String="", val invoice:String="", val customer:String="", val from:String="", val to:String="",
     val paymentStatus:String="", val due:String="", val mail:String="", val whatsapp:String="",
@@ -67,8 +67,8 @@ data class BankTransactionFilter(val q:String="", val status:String="", val dire
 @Serializable data class BankAudit(val id:Long?=null,val eventType:String="",val detail:String="",val previousStatus:String="",val newStatus:String="",val performedBy:String="",val createdAt:String="")
 
 @Serializable data class CompatibilityInfo(
-    val serverBaseline:String="9.0.92",
-    val apiContract:String="server-9.0.92-compatible-v2",
-    val minimumMobile:String="1.2.2",
-    val latestMobile:String="1.2.2",
+    val serverBaseline:String="10.0.5",
+    val apiContract:String="server-10.0.5-compatible-v4",
+    val minimumMobile:String="1.2.3",
+    val latestMobile:String="1.2.4",
 )

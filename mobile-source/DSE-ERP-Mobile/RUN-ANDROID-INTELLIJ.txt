@@ -1,0 +1,65 @@
+JASVI INDUSTRIES MOBILE 1.2.5 - ANDROID UAT / PROD
+
+NORMAL INTELLIJ TESTING
+1. Open this PROJECT ROOT in IntelliJ IDEA.
+2. Wait for Gradle sync.
+3. Start DSE Pixel API 36 (or a connected Android device).
+4. Open Build Variants and select androidApp = uatDebug for UAT testing.
+5. Select run configuration: DSE ERP Android.
+6. Run.
+
+UAT PACKAGE
+- App name: Jasvi Industries UAT
+- Package: org.dse.erp.mobile.uat
+- Server: https://api-uat.jasviindustries.in
+- PROD host is blocked.
+
+PROD PACKAGE
+- App name: Jasvi Industries
+- Package: org.dse.erp.mobile
+- Server: https://api.jasviindustries.in
+- Server address is locked in the PROD build.
+- UAT host is blocked.
+
+BUILD COMMANDS
+UAT debug APK (internal testing):
+  .\gradlew.bat :androidApp:assembleUatDebug --console=plain
+Output:
+  androidApp\build\outputs\apk\uat\debug\androidApp-uat-debug.apk
+
+UAT release APK:
+  .\gradlew.bat :androidApp:assembleUatRelease --console=plain
+
+PROD release APK:
+  .\gradlew.bat :androidApp:assembleProdRelease --console=plain
+
+PRODUCTION SIGNING (ONE PERMANENT KEY, NEVER COMMIT IT)
+Set these in your USER Gradle properties (~/.gradle/gradle.properties on Windows):
+  jasviProdStoreFile=D:/Secure/Jasvi/jasvi-prod-release.jks
+  jasviProdStorePassword=<your-secret>
+  jasviProdKeyAlias=jasvi-prod
+  jasviProdKeyPassword=<your-secret>
+
+The build intentionally refuses prodRelease if these four signing properties are absent.
+Keep the same production key for every future org.dse.erp.mobile update.
+
+ZERO-COST DIRECT UPDATE CONTRACT
+The app uses the server health policy for minimum/latest Android versions.
+When a newer version is published, Update Now downloads the APK and its SHA-256 sidecar.
+
+UAT expected files:
+  https://api-uat.jasviindustries.in/mobile/android/uat/Jasvi-Mobile-<version>-UAT.apk
+  https://api-uat.jasviindustries.in/mobile/android/uat/Jasvi-Mobile-<version>-UAT.apk.sha256
+
+PROD expected files:
+  https://api.jasviindustries.in/mobile/android/prod/Jasvi-Mobile-<version>-PROD.apk
+  https://api.jasviindustries.in/mobile/android/prod/Jasvi-Mobile-<version>-PROD.apk.sha256
+
+Before Android opens its installer the app verifies:
+- HTTPS download
+- SHA-256 sidecar
+- APK package identity (UAT cannot replace PROD and vice versa)
+- APK versionCode is newer than the installed version
+
+On first direct update Android may ask the user to allow Jasvi Industries to install unknown apps.
+The user enables it once and presses Update Now again.
