@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm_uat_server_change:
-        description: 'I confirm this is the UAT server only and approve the one-time Nginx mobile download route setup'
+        description: 'I confirm this is the UAT server only and approve the one-time Caddy mobile download route setup'
         required: true
         default: false
         type: boolean
@@ -30,6 +30,7 @@ jobs:
       SSH_KNOWN_HOSTS: ${{ secrets.DSE_SSH_KNOWN_HOSTS }}
       SSH_PORT: ${{ vars.DSE_SSH_PORT }}
       PUBLIC_BASE_URL: https://api-uat.jasviindustries.in/mobile/android/uat
+      PUBLIC_HEALTH_URL: https://api-uat.jasviindustries.in/api/runtime/health
     steps:
       - name: Require explicit UAT bootstrap approval
         shell: bash
@@ -52,6 +53,19 @@ jobs:
           done
           echo "SSH_PORT=${SSH_PORT:-22}" >> "$GITHUB_ENV"
 
+      - name: Verify existing public UAT API health
+        shell: bash
+        run: |
+          set -euo pipefail
+          BODY="$(curl --fail --silent --show-error --max-time 20 "$PUBLIC_HEALTH_URL")"
+          python3 - "$BODY" <<'PY'
+          import json,sys
+          r=json.loads(sys.argv[1])
+          if r.get('ready') is not True or r.get('environment') != 'UAT':
+              raise SystemExit(f'Unexpected UAT health before bootstrap: {r}')
+          print('PRE_BOOTSTRAP_UAT_HEALTH_OK')
+          PY
+
       - name: Configure strict SSH host verification
         shell: bash
         run: |
@@ -62,14 +76,14 @@ jobs:
           printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Upload one-time bootstrap script
+      - name: Upload one-time Caddy bootstrap script
         shell: bash
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/dse_mobile_deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=yes \
             "$SSH_USER@$SSH_HOST" 'mkdir -p /tmp/dse-mobile-ci-bootstrap'
           scp -i ~/.ssh/dse_mobile_deploy_key -P "$SSH_PORT" -o StrictHostKeyChecking=yes \
-            scripts/mobile/bootstrap-nginx-uat.sh \
+            scripts/mobile/bootstrap-caddy-uat.sh \
             "$SSH_USER@$SSH_HOST:/tmp/dse-mobile-ci-bootstrap/"
 
       - name: Bootstrap UAT static mobile route
@@ -78,9 +92,9 @@ jobs:
           set -euo pipefail
           ssh -i ~/.ssh/dse_mobile_deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=yes \
             "$SSH_USER@$SSH_HOST" \
-            "bash /tmp/dse-mobile-ci-bootstrap/bootstrap-nginx-uat.sh api-uat.jasviindustries.in"
+            "bash /tmp/dse-mobile-ci-bootstrap/bootstrap-caddy-uat.sh api-uat.jasviindustries.in"
 
-      - name: Verify public route end-to-end
+      - name: Verify public mobile route end-to-end
         shell: bash
         run: |
           set -euo pipefail
@@ -99,6 +113,19 @@ jobs:
           }
           echo "MOBILE_UAT_PUBLIC_ROUTE_OK"
 
+      - name: Verify UAT API remained healthy
+        shell: bash
+        run: |
+          set -euo pipefail
+          BODY="$(curl --fail --silent --show-error --max-time 20 "$PUBLIC_HEALTH_URL")"
+          python3 - "$BODY" <<'PY'
+          import json,sys
+          r=json.loads(sys.argv[1])
+          if r.get('ready') is not True or r.get('environment') != 'UAT':
+              raise SystemExit(f'Unexpected UAT health after bootstrap: {r}')
+          print('POST_BOOTSTRAP_UAT_HEALTH_OK')
+          PY
+
       - name: Clean probe and remote staging
         if: always()
         shell: bash
@@ -115,8 +142,9 @@ jobs:
         run: |
           {
             echo '### UAT mobile server bootstrap complete'
-            echo '- UAT Nginx static route is active.'
+            echo '- UAT Caddy static route is active.'
             echo '- Public route probe passed.'
+            echo '- Existing UAT API health passed before and after the Caddy reload.'
             echo '- No DSE ERP database or server service was changed.'
             echo '- PROD was not touched.'
           } >> "$GITHUB_STEP_SUMMARY"
