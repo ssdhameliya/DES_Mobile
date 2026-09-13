@@ -17,12 +17,12 @@ object MobileSecurityPolicy {
         }.trim().lowercase()
     }
 
-    fun isBlockedProductionEndpoint(url: String): Boolean =
-        MobileBuildInfo.UAT_ONLY_TEST_BUILD && endpointHost(url) == MobileBuildInfo.BLOCKED_PROD_HOST.lowercase()
+    fun isBlockedEnvironmentEndpoint(url: String): Boolean =
+        MobileBuildInfo.BLOCKED_SERVER_HOST.isNotBlank() && endpointHost(url) == MobileBuildInfo.BLOCKED_SERVER_HOST
 
     fun isSafeEndpoint(url: String): Boolean {
         val value = url.trim()
-        if (isBlockedProductionEndpoint(value)) return false
+        if (isBlockedEnvironmentEndpoint(value)) return false
         if (value.startsWith("https://", ignoreCase = true)) return true
         if (!value.startsWith("http://", ignoreCase = true)) return false
         return isLoopbackHost(endpointHost(value))
@@ -31,7 +31,7 @@ object MobileSecurityPolicy {
     fun endpointProblem(url: String): String? = when {
         url.isBlank() -> "ERP server URL is required."
         !url.contains("://") -> "ERP server URL must include http:// or https://."
-        isBlockedProductionEndpoint(url) -> "This v9.0.92 UI refresh package is a UAT-only test build. The PROD Jasvi Industries API is intentionally blocked."
+        isBlockedEnvironmentEndpoint(url) -> "This ${MobileBuildInfo.RELEASE_CHANNEL} mobile build cannot connect to the opposite Jasvi environment."
         !isSafeEndpoint(url) -> "For security, remote Jasvi Industries servers must use HTTPS. Plain HTTP is allowed only for localhost development."
         else -> null
     }

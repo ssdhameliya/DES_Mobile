@@ -15,6 +15,10 @@ expect suspend fun platformAuthenticateBiometric(reason: String): BiometricAuthR
 expect fun platformSecurityLabel(): String
 expect fun platformImportCapability(): String
 expect fun platformLocalDateIso(): String
+expect fun platformName(): String
+expect fun platformDeviceClassLabel(): String
+expect fun platformBiometricUnlockLabel(): String
+expect fun platformImportFormatHint(): String
 
 
 data class PushPermissionResult(
@@ -37,6 +41,14 @@ expect fun platformPickAttachment(onResult:(PickedAttachment)->Unit)
 expect fun platformShareText(title:String,text:String): Boolean
 expect fun platformShareFile(title:String,fileName:String,data:ByteArray): Boolean
 expect fun platformOpenExternalUrl(url:String): Boolean
+
+
+data class MobileUpdateInstallResult(
+    val started: Boolean,
+    val message: String = "",
+)
+
+expect suspend fun platformInstallMobileUpdate(version: String): MobileUpdateInstallResult
 
 internal fun encodeBase64Portable(data:ByteArray):String{
     val alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"

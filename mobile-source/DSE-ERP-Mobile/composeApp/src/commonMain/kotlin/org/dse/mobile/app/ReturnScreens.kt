@@ -149,7 +149,7 @@ internal fun ReturnsWorkspace(api:DseErpHttpClient,p:PermissionContext,sales:Boo
     edit?.let{d->ReturnNotesDialog(api,d,{edit=null}){msg=it;edit=null;refresh++}}
     attach?.let{d->ReturnAttachmentDialog(api,d,{attach=null}){msg=it;attach=null;refresh++}}
     confirm?.let{(action,r)->
-        if(action=="delete")TypedDeleteDialog("Delete Return","Type DELETE to permanently delete ${r.no}. The v9.0.92 server will preserve audit/integrity and reverse stock only when allowed.",{confirm=null}){scope.launch{when(val x=api.deleteReturn(r.no,sales)){is ApiResult.Success->{msg=x.value.message;confirm=null;refresh++};else->msg=x.readableMessage()}}}
+        if(action=="delete")TypedDeleteDialog("Delete Return","Type DELETE to permanently delete ${r.no}. The v10.0.5 server will preserve audit/integrity and reverse stock only when allowed.",{confirm=null}){scope.launch{when(val x=api.deleteReturn(r.no,sales)){is ApiResult.Success->{msg=x.value.message;confirm=null;refresh++};else->msg=x.readableMessage()}}}
         else ConfirmDialog("Cancel Return","Cancel ${r.no}? The server will reject cancellation if refund, stock or lifecycle rules make it unsafe.","Cancel Return",true,{confirm=null}){scope.launch{when(val x=api.cancelReturn(r.no,sales)){is ApiResult.Success->{msg=x.value.message;confirm=null;refresh++};else->msg=x.readableMessage()}}}
     }
 }
@@ -175,7 +175,7 @@ internal fun ReturnCreateDialog(api:DseErpHttpClient,source:ReturnSource,onClose
                     val description=sourceRows.mapNotNull{it.itemDescription?.takeIf(String::isNotBlank)}.distinct().joinToString(" / ").ifBlank{code}
                     drafts+=ReturnLineDraft(code,description,sourceRows.size,rates.singleOrNull(),invoiced,previously,(invoiced-previously).coerceAtLeast(0.0))
                 }
-                msg="Return eligibility follows the v9.0.92 API contract at item-code level. When the same item appears on multiple invoice lines, Mobile combines those lines and the server allocates the returned quantity across the original invoice snapshots in its authoritative order. Return amount is calculated by the server."
+                msg="Return eligibility follows the v10.0.5 API contract at item-code level. When the same item appears on multiple invoice lines, Mobile combines those lines and the server allocates the returned quantity across the original invoice snapshots in its authoritative order. Return amount is calculated by the server."
             }
             else->msg=r.readableMessage()
         }

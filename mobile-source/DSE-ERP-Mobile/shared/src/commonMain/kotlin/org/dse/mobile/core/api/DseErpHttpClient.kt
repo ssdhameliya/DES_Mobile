@@ -188,7 +188,7 @@ class DseErpHttpClient(
     override suspend fun bankCandidates(transactionId:Long)=get<List<BankCandidate>>("${ExistingErpRoutes.BANK_STATEMENTS}/transactions/$transactionId/candidates")
     override suspend fun bankSuggest(transactionId:Long)=postEmpty<List<BankCandidate>>("${ExistingErpRoutes.BANK_STATEMENTS}/transactions/$transactionId/suggest")
     override suspend fun bankMatch(transactionId:Long,user:String,allocations:List<BankAllocationRequest>,note:String):ApiResult<BankOperationResult>{
-        // Server v9.0.92 stores Match and Note through separate endpoints. Keep the financial operation atomic here; UI exposes Note as an explicit independent audit action.
+        // Server v10.0.5 stores Match and Note through separate endpoints. Keep the financial operation atomic here; UI exposes Note as an explicit independent audit action.
         return post<BankOperationResult,BankMatchRequest>("${ExistingErpRoutes.BANK_STATEMENTS}/transactions/$transactionId/match",BankMatchRequest(user,allocations))
     }
     override suspend fun bankExpense(transactionId:Long,user:String,category:String,accountName:String,paymentMode:String,notes:String)=post<BankOperationResult,BankExpenseRequest>("${ExistingErpRoutes.BANK_STATEMENTS}/transactions/$transactionId/expense",BankExpenseRequest(category,accountName,paymentMode,notes,"",user))
@@ -306,8 +306,8 @@ class DseErpHttpClient(
             pendingReconciliation=0,
         )
     }
-    override suspend fun sync(sinceCursor:Long):ApiResult<SyncPage> = ApiResult.NotImplemented("Durable mobile change feed is not part of the v9.0.92 server contract; local outbox remains explicit.")
-    override suspend fun shipping(page:Int,size:Int):ApiResult<List<ShippingRecord>> = ApiResult.NotImplemented("Shipping remains Sale-owned data in v9.0.92; Live Activities are presentation-only.")
+    override suspend fun sync(sinceCursor:Long):ApiResult<SyncPage> = ApiResult.NotImplemented("Durable mobile change feed is not part of the v10.0.5 server contract; local outbox remains explicit.")
+    override suspend fun shipping(page:Int,size:Int):ApiResult<List<ShippingRecord>> = ApiResult.NotImplemented("Shipping remains Sale-owned data in v10.0.5; Live Activities are presentation-only.")
 
     fun close()=client.close()
 

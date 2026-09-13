@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">Jasvi Industries Mobile</string>
+    <string name="shortcut_dashboard">Dashboard</string>
+    <string name="shortcut_dashboard_long">Open Jasvi Industries Dashboard</string>
+    <string name="shortcut_sales">Sales</string>
+    <string name="shortcut_sales_long">Open Jasvi Industries Sales</string>
+    <string name="shortcut_purchase">Purchase</string>
+    <string name="shortcut_purchase_long">Open Jasvi Industries Purchase</string>
+    <string name="shortcut_finance">Bank &amp; Expense</string>
+    <string name="shortcut_finance_long">Open Jasvi Industries Bank and Expense</string>
+    <string name="shortcut_import">Data Import</string>
+    <string name="shortcut_import_long">Open Jasvi Industries Data Import</string>
+</resources>

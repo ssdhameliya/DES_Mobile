@@ -24,6 +24,10 @@ actual suspend fun platformAuthenticateBiometric(reason: String): BiometricAuthR
 actual fun platformSecurityLabel(): String = "Secure UAT session • iPhone/iPad uses protected Keychain storage"
 actual fun platformImportCapability(): String = "IntelliJ: Excel (.xlsx/.xls) and CSV file picker enabled"
 actual fun platformLocalDateIso(): String = LocalDate.now().toString()
+actual fun platformName(): String = "IntelliJ/JVM"
+actual fun platformDeviceClassLabel(): String = "desktop preview"
+actual fun platformBiometricUnlockLabel(): String = "Biometric unlock"
+actual fun platformImportFormatHint(): String = "IntelliJ accepts Excel (.xlsx/.xls) and CSV files."
 actual suspend fun platformRequestPushNotifications(): PushPermissionResult =
     PushPermissionResult(false, "Push notifications activate in the native iOS build.")
 actual fun platformPushCapability(): String =
@@ -53,6 +57,7 @@ actual fun platformShareFile(title:String,fileName:String,data:ByteArray):Boolea
     if(Desktop.isDesktopSupported()){Desktop.getDesktop().open(file.toFile());true}else false
 }.getOrDefault(false)
 actual fun platformOpenExternalUrl(url:String):Boolean=runCatching{if(Desktop.isDesktopSupported()){Desktop.getDesktop().browse(URI(url));true}else false}.getOrDefault(false)
+actual suspend fun platformInstallMobileUpdate(version: String): MobileUpdateInstallResult = MobileUpdateInstallResult(false, "Direct APK updates are available only in the Android build.")
 actual fun platformConsumeDeepLink(): String? {
     if (jvmDeepLinkConsumed) return null
     val value = System.getProperty("dse.mobile.deepLink")?.trim()?.takeIf { it.isNotEmpty() }

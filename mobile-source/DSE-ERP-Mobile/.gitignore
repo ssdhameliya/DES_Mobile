@@ -1,0 +1,17 @@
+.gradle/
+.idea/
+.kotlin/
+**/build/
+local.properties
+
+*.jks
+*.keystore
+*.p12
+*.pfx
+
+UAT-Release-*/
+PROD-Release-*/
+uat-release-build.log
+
+.DS_Store
+Thumbs.db

@@ -1,0 +1,26 @@
+**/.gradle/
+**/.idea/
+**/.kotlin/
+**/build/
+**/local.properties
+
+**/*.jks
+**/*.keystore
+**/*.p12
+**/*.pfx
+
+**/UAT-Release-*/
+**/PROD-Release-*/
+**/uat-release-build.log
+
+**/BUILD-UAT.bat
+**/RUN-UAT.bat
+**/BUILD-RUN-UAT.bat
+
+.DS_Store
+Thumbs.db
+
+# Local diagnostics / temporary backups
+**/gradle-thread-dump.txt
+**/*.backup
+**/*.log

@@ -13,7 +13,9 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "DSE-ERP-Mobile-1.2.2-V9.0.92-PREMIUM-UI"
+rootProject.name = "DSE-ERP-Mobile"
 
 include(":shared")
 include(":composeApp")
+
+include(":androidApp")

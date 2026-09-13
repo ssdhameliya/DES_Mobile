@@ -39,7 +39,7 @@ private fun FinanceRegister(api:DseErpHttpClient,p:PermissionContext,openTarget:
     fun loadFull(row:FinanceRecord,after:(FinanceRecord)->Unit){scope.launch{val id=row.id?:return@launch;when(val r=api.financeById(id)){is ApiResult.Success->after(r.value);else->msg=r.readableMessage()}}}
     suspend fun save(rec:FinanceRecord,create:Boolean){
         when(val h=api.health()){
-            is ApiResult.NetworkError->{if(create){msg="ERP is offline. New Finance entries are not queued automatically because v9.0.92 has no idempotency key. Reconnect and press Save again."}else{OfflineRepository.enqueueFinance(rec,false);msg="Pending Local Sync — this row-versioned Finance update was not sent because ERP is offline.";editor=null}}
+            is ApiResult.NetworkError->{if(create){msg="ERP is offline. New Finance entries are not queued automatically because v10.0.5 has no idempotency key. Reconnect and press Save again."}else{OfflineRepository.enqueueFinance(rec,false);msg="Pending Local Sync — this row-versioned Finance update was not sent because ERP is offline.";editor=null}}
             is ApiResult.Success->{val r=if(create)api.createFinance(rec)else api.updateFinance(rec);when(r){is ApiResult.Success->{msg=if(create)"Created ${r.value.voucherNo}" else "Finance entry updated";creating=false;editor=null;refresh++};else->msg=r.readableMessage()}}
             else->msg=h.readableMessage()
         }
@@ -79,7 +79,7 @@ private fun FinanceRegister(api:DseErpHttpClient,p:PermissionContext,openTarget:
     selected?.let{r->DetailDialog("Finance ${r.voucherNo}",{selected=null},{Column(verticalArrangement=Arrangement.spacedBy(8.dp)){detailFinanceRows(r);if(!r.billPath.isNullOrBlank())Text("Bill / Proof: ${r.billPath}",style=MaterialTheme.typography.bodySmall);Text("Actions",fontWeight=FontWeight.SemiBold);PremiumActionGrid(buildList{if(!r.reconciled&&p.can("BANK_EXPENSE","EDIT"))add(PremiumActionSpec("Edit",{editor=r;selected=null}));if(!r.reconciled&&p.can("BANK_EXPENSE","DELETE"))add(PremiumActionSpec("Delete",{confirm=r;selected=null},true));if(r.linkedDocumentNo?.isNotBlank()==true)add(PremiumActionSpec("Open Linked ERP",{platformOpenExternalUrl("dseerp://${linkedRoute(r.linkedTargetType)}/${encodeBank(r.linkedDocumentNo.orEmpty())}")}))})}})}
     if(creating)FinanceEditorDialog(api,null,{creating=false}){rec->scope.launch{save(rec,true)}}
     editor?.let{old->FinanceEditorDialog(api,old,{editor=null}){rec->scope.launch{save(rec,false)}}}
-    confirm?.let{r->ConfirmDialog("Delete Finance Entry","Delete ${r.voucherNo}? Reconciled/linked entries are protected by the v9.0.92 server.","Delete",true,{confirm=null}){scope.launch{when(val x=api.deleteFinance(r.id?:0,r.rowVersion)){is ApiResult.Success->{msg=x.value.message;confirm=null;refresh++};else->msg=x.readableMessage()}}}}
+    confirm?.let{r->ConfirmDialog("Delete Finance Entry","Delete ${r.voucherNo}? Reconciled/linked entries are protected by the v10.0.5 server.","Delete",true,{confirm=null}){scope.launch{when(val x=api.deleteFinance(r.id?:0,r.rowVersion)){is ApiResult.Success->{msg=x.value.message;confirm=null;refresh++};else->msg=x.readableMessage()}}}}
 }
 
 @Composable
@@ -303,7 +303,7 @@ private fun BankTransactionDialog(
                     "ignore" -> DseField("Ignore Reason", note, required=true, onValue = { note = it })
                     "review" -> DseField("Review Note", note, onValue = { note = it })
                     "note" -> {
-                        Text("Notes are stored as a separate audit action so the financial Match remains atomic on Server v9.0.92.", style = MaterialTheme.typography.bodySmall)
+                        Text("Notes are stored as a separate audit action so the financial Match remains atomic on Server v10.0.5.", style = MaterialTheme.typography.bodySmall)
                         DseField("Transaction Note", note, required=true, onValue = { note = it })
                     }
                     "audit" -> DseSection("Audit History", Icons.Rounded.History) {

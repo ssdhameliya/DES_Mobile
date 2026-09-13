@@ -1,5 +1,6 @@
 package org.dse.mobile.app
 
+import org.dse.mobile.core.config.MobileBuildInfo
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -264,7 +265,7 @@ internal fun UatStatusPill(
             Box(Modifier.size(7.dp).clip(CircleShape).background(accent))
             Icon(if (online == true) Icons.Rounded.CloudDone else Icons.Rounded.Security, null, Modifier.size(14.dp), tint = accent)
             Text(
-                when (online) { true -> "UAT Online"; false -> "UAT Offline"; null -> "Checking UAT" },
+                when (online) { true -> "${MobileBuildInfo.RELEASE_CHANNEL} Online"; false -> "${MobileBuildInfo.RELEASE_CHANNEL} Offline"; null -> "Checking ${MobileBuildInfo.RELEASE_CHANNEL}" },
                 style = MaterialTheme.typography.labelMedium,
                 color = accent,
                 fontWeight = FontWeight.SemiBold,
@@ -423,15 +424,15 @@ internal fun PremiumBiometricPanel(
                 Icon(Icons.Rounded.Fingerprint, null, tint = Color.White, modifier = Modifier.size(25.dp))
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("Face ID / Touch ID", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(platformBiometricUnlockLabel(), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                 Text(
-                    if (enabled) "Unlock your secure workspace instantly" else "Available after your first secure sign-in on iPhone or iPad",
+                    if (enabled) "Unlock your secure workspace instantly" else "Available after your first secure sign-in on ${platformDeviceClassLabel()}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Icon(
-                if (enabled) Icons.Rounded.ArrowForward else Icons.Rounded.PhoneIphone,
+                if (enabled) Icons.Rounded.ArrowForward else if(platformName()=="Android") Icons.Rounded.PhoneAndroid else Icons.Rounded.PhoneIphone,
                 null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(20.dp),

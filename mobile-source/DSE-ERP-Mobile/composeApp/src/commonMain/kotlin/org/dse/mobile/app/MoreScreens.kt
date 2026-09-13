@@ -604,7 +604,7 @@ private fun reportShareText(from:String,to:String,type:String,r:ReportBundle)=bu
                 PremiumSecondaryButton("Password",{password=true},Modifier.weight(1f),icon=Icons.Rounded.Lock)
             }
             PremiumCard(Modifier.fillMaxWidth(),padding=13.dp){
-                Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){PremiumIconTile(Icons.Rounded.Fingerprint,DseSuccess,size=42.dp);Column(Modifier.weight(1f)){Text("Face ID / Touch ID",fontWeight=FontWeight.Bold);Text("Native iPhone/iPad biometric unlock is supported after secure sign-in.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
+                Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){PremiumIconTile(Icons.Rounded.Fingerprint,DseSuccess,size=42.dp);Column(Modifier.weight(1f)){Text(platformBiometricUnlockLabel(),fontWeight=FontWeight.Bold);Text("Native ${platformDeviceClassLabel()} secure unlock is supported after sign-in.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
             }
         }
         if(msg.isNotBlank())Text(msg,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -762,7 +762,7 @@ private fun reportShareText(from:String,to:String,type:String,r:ReportBundle)=bu
         }
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){DseMetricTile("Mobile",MobileBuildInfo.MOBILE_VERSION,Icons.Rounded.PhoneIphone,Modifier.weight(1f),DseViolet);DseMetricTile("Server",MobileBuildInfo.SERVER_BASELINE,Icons.Rounded.CloudDone,Modifier.weight(1f),DseSuccess)}
         DseSection("Compatibility",Icons.Rounded.Verified){Text("API contract ${MobileBuildInfo.API_CONTRACT_VERSION}");Text("Business authority remains on the Jasvi Industries server. Mobile lifecycle, numbering, validation, permissions and resulting ERP state stay server-owned.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
-        DseSection("iPhone & iPad",Icons.Rounded.PhoneIphone){Text(platformSecurityLabel());Text(platformImportCapability());Text(platformPushCapability());Text(platformSystemExperienceCapability())}
+        DseSection(platformDeviceClassLabel(),if(platformName()=="Android") Icons.Rounded.PhoneAndroid else Icons.Rounded.PhoneIphone){Text(platformSecurityLabel());Text(platformImportCapability());Text(platformPushCapability());Text(platformSystemExperienceCapability())}
         DseSection("Secure architecture",Icons.Rounded.Security){Text("Server backup/restore, safe rollback, updater and template-studio authoring remain protected desktop/server administration operations.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Text("Mobile consumes approved ERP data and documents without duplicating destructive server-maintenance tools.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
     }
 }
