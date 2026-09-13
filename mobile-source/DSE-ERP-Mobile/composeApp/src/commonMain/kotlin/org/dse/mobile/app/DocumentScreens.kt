@@ -155,9 +155,9 @@ private fun SalesDocumentCard(record:SaleRecord,onActions:()->Unit,onClick:()->U
             FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
                 OutlinedButton(onClick={filterOpen=true}){Icon(Icons.Rounded.FilterAlt,null);Spacer(Modifier.width(5.dp));Text("Filters")}
                 OutlinedButton(onClick={scope.launch{when(val x=exportSalesCsv(api,filter)){is ApiResult.Success->msg=if(shareSalesCsv(x.value))"Sales CSV ready to share" else "Share service unavailable";else->msg=x.readableMessage()}}}){Icon(Icons.Rounded.FileDownload,null);Spacer(Modifier.width(5.dp));Text("Export")}
-                OutlinedButton(onClick={saveViewPrompt=true}){Icon(Icons.Rounded.BookmarkAdd,null);Spacer(Modifier.width(5.dp));Text("Save View")}
+
             }
-            if(savedViews.isNotEmpty())DseSelect("Saved View",savedChoice,listOf("")+savedViews.map{it.name},onValue={name->savedChoice=name;savedViews.firstOrNull{it.name==name}?.let{filter=decodeSalesView(it.data);page=0}})
+
         }}},
         footer={PagingControls(page,data?.totalPages?:1,data?.totalRows?:0){page=it}}
     ){
@@ -199,7 +199,7 @@ private fun SalesDocumentCard(record:SaleRecord,onActions:()->Unit,onClick:()->U
             if(p.can("SALES","EDIT"))add(PremiumActionSpec("View / Record Payments",{loadFull(r){payment=it}},enabled=canPay,disabledReason=when{approvalLocked->"Approval must be completed before payment.";outstanding<=0.005->"This Sale is already fully paid.";!active->"Cancelled or deleted Sales cannot receive payment.";else->null}))
             if(p.can("SALES","EDIT"))add(PremiumActionSpec("Create Sales Return",{loadFull(r){returning=it}},enabled=canReturn,disabledReason=when{state!="APPROVED"->"Only approved Sales can be returned.";!fullyPaid->"The Sale must be fully paid before creating a return.";else->"A return is already pending or partial."}))
             if(p.can("SALES","VIEW")){
-                add(PremiumActionSpec("PDF / Print",{scope.launch{msg=shareCanonicalDocument(api,"SALES_INVOICE",r.invoiceNo,"PDF")}},enabled=active&&!approvalLocked,disabledReason="Document output is available after approval."))
+                add(PremiumActionSpec("Share PDF",{scope.launch{msg=shareCanonicalDocument(api,"SALES_INVOICE",r.invoiceNo,"PDF")}},enabled=active&&!approvalLocked,disabledReason="Document output is available after approval."))
                 add(PremiumActionSpec("Excel",{scope.launch{msg=shareCanonicalDocument(api,"SALES_INVOICE",r.invoiceNo,"XLSX")}},enabled=active&&!approvalLocked,disabledReason="Document output is available after approval."))
                 add(PremiumActionSpec("Send Email",{loadFull(r){email=it}},enabled=active&&!approvalLocked,disabledReason="Email is available after approval."))
                 val hasPhone=!r.customer?.phone.isNullOrBlank()
@@ -316,7 +316,7 @@ private fun SalesDocumentCard(record:SaleRecord,onActions:()->Unit,onClick:()->U
             if(p.can("PURCHASE","EDIT"))add(PremiumActionSpec("View / Record Payments",{loadFull(r){payment=it}},enabled=canPay,disabledReason=when{state=="DRAFT"->"Draft Purchases cannot receive payment.";approvalLocked->"Approval must be completed before payment.";outstanding<=0.005->"This Purchase is already fully paid.";!active->"Cancelled or deleted Purchases cannot receive payment.";else->null}))
             if(p.can("PURCHASE","EDIT"))add(PremiumActionSpec("Create Purchase Return",{loadFull(r){returning=it}},enabled=canReturn,disabledReason=when{state!="APPROVED"->"Only approved Purchases can be returned.";!fullyPaid->"The Purchase must be fully paid before creating a return.";else->"A return is already pending or partial."}))
             if(p.can("PURCHASE","VIEW")){
-                add(PremiumActionSpec("PDF / Print",{scope.launch{msg=shareCanonicalDocument(api,"PURCHASE_INVOICE",r.invoiceNo,"PDF")}},enabled=active&&!approvalLocked,disabledReason="Document output is available after approval."))
+                add(PremiumActionSpec("Share PDF",{scope.launch{msg=shareCanonicalDocument(api,"PURCHASE_INVOICE",r.invoiceNo,"PDF")}},enabled=active&&!approvalLocked,disabledReason="Document output is available after approval."))
                 add(PremiumActionSpec("Excel",{scope.launch{msg=shareCanonicalDocument(api,"PURCHASE_INVOICE",r.invoiceNo,"XLSX")}},enabled=active&&!approvalLocked,disabledReason="Document output is available after approval."))
                 add(PremiumActionSpec("Send Email",{loadFull(r){email=it}},enabled=active&&!approvalLocked,disabledReason="Email is available after approval."))
                 val hasPhone=!r.supplier?.phone.isNullOrBlank()
@@ -407,7 +407,7 @@ private fun SaleDetailDialog(
                 if(canEdit)add(PremiumActionSpec("Edit",onEdit))
                 if(canPay)add(PremiumActionSpec("Record Payment",onPayment))
                 if(canReturn)add(PremiumActionSpec("Create Sales Return",onReturn))
-                if(active&&!approvalLocked&&p.can("SALES","VIEW")){add(PremiumActionSpec("PDF / Print",onPdf,icon=Icons.Rounded.PictureAsPdf));add(PremiumActionSpec("Excel",onExcel,icon=Icons.Rounded.TableChart));add(PremiumActionSpec("Email",onEmail));add(PremiumActionSpec("WhatsApp",onWhatsApp))}
+                if(active&&!approvalLocked&&p.can("SALES","VIEW")){add(PremiumActionSpec("Share PDF",onPdf,icon=Icons.Rounded.PictureAsPdf));add(PremiumActionSpec("Excel",onExcel,icon=Icons.Rounded.TableChart));add(PremiumActionSpec("Email",onEmail));add(PremiumActionSpec("WhatsApp",onWhatsApp))}
                 if(p.can("SALES","CREATE"))add(PremiumActionSpec("Duplicate",onDuplicate))
                 if(state=="PENDING APPROVAL"&&p.isAdmin()){add(PremiumActionSpec("Approve",onApprove));add(PremiumActionSpec("Reject",onReject,destructive=true))}
                 if(active&&!financiallyLocked&&p.can("SALES","EDIT"))add(PremiumActionSpec("Cancel",onCancel,destructive=true))
@@ -467,7 +467,7 @@ private fun PurchaseDetailDialog(
                 if(canEdit)add(PremiumActionSpec("Edit",onEdit))
                 if(canPay)add(PremiumActionSpec("Record Payment",onPayment))
                 if(canReturn)add(PremiumActionSpec("Create Purchase Return",onReturn))
-                if(active&&!approvalLocked&&p.can("PURCHASE","VIEW")){add(PremiumActionSpec("PDF / Print",onPdf,icon=Icons.Rounded.PictureAsPdf));add(PremiumActionSpec("Excel",onExcel,icon=Icons.Rounded.TableChart));add(PremiumActionSpec("Email",onEmail));add(PremiumActionSpec("WhatsApp",onWhatsApp))}
+                if(active&&!approvalLocked&&p.can("PURCHASE","VIEW")){add(PremiumActionSpec("Share PDF",onPdf,icon=Icons.Rounded.PictureAsPdf));add(PremiumActionSpec("Excel",onExcel,icon=Icons.Rounded.TableChart));add(PremiumActionSpec("Email",onEmail));add(PremiumActionSpec("WhatsApp",onWhatsApp))}
                 if(p.can("PURCHASE","CREATE"))add(PremiumActionSpec("Duplicate",onDuplicate))
                 if(state=="PENDING APPROVAL"&&p.isAdmin()){add(PremiumActionSpec("Approve",onApprove));add(PremiumActionSpec("Reject",onReject,destructive=true))}
                 if(active&&!financiallyLocked&&p.can("PURCHASE","EDIT"))add(PremiumActionSpec("Cancel",onCancel,destructive=true))

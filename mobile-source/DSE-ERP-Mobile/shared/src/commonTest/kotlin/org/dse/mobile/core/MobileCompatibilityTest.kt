@@ -44,9 +44,9 @@ class MobileCompatibilityTest {
     }
 
     @Test fun iosUsesItsOwnPolicy() {
-        val result = evaluateMobileCompatibility(policy(iosMin = "1.2.0", iosLatest = "1.2.5"), "iOS", "1.2.5")
+        val result = evaluateMobileCompatibility(policy(iosMin = "1.2.0", iosLatest = "1.2.6"), "iOS", "1.2.5")
         assertEquals(MobileUpdateRequirement.OPTIONAL_UPDATE, result.requirement)
-        assertEquals("1.2.5", result.latestVersion)
+        assertEquals("1.2.6", result.latestVersion)
     }
 
     @Test fun olderServerWithoutMobilePolicyRemainsCompatible() {

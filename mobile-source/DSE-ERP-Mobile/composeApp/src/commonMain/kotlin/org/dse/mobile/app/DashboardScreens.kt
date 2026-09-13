@@ -14,6 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -90,12 +91,12 @@ internal fun DashboardScreen(
         }
 
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){
-            DseMetricTile("Sales",compactMoney(s?.salesValue),Icons.Rounded.BarChart,Modifier.weight(1f),DseSuccess)
-            DseMetricTile("Receivable",compactMoney(s?.receivables),Icons.Rounded.CreditCard,Modifier.weight(1f),DseInfo)
+            DseMetricTile("Sales",money(s?.salesValue),Icons.Rounded.BarChart,Modifier.weight(1f),DseSuccess)
+            DseMetricTile("Receivable",money(s?.receivables),Icons.Rounded.CreditCard,Modifier.weight(1f),DseInfo)
         }
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){
-            DseMetricTile("Payable",compactMoney(s?.payables),Icons.Rounded.Receipt,Modifier.weight(1f),DseWarning)
-            DseMetricTile("Bank",compactMoney(s?.cash),Icons.Rounded.AccountBalance,Modifier.weight(1f),DsePurple)
+            DseMetricTile("Payable",money(s?.payables),Icons.Rounded.Receipt,Modifier.weight(1f),DseWarning)
+            DseMetricTile("Bank",money(s?.cash),Icons.Rounded.AccountBalance,Modifier.weight(1f),DsePurple)
         }
 
         if(data==null)DseLoadingState("Loading dashboard records…")
@@ -172,6 +173,7 @@ private fun QuickActionTile(label:String,icon:androidx.compose.ui.graphics.vecto
     var msg by remember{mutableStateOf("Search invoices, parties, items, payments, returns and bank records")}
     var busy by remember{mutableStateOf(false)}
     val scope=rememberCoroutineScope()
+    val focusManager=LocalFocusManager.current
     suspend fun searchNow(term:String=q){
         val value=term.trim()
         if(value.length<2){rows=emptyList();msg="Type at least 2 characters";return}
@@ -197,7 +199,7 @@ private fun QuickActionTile(label:String,icon:androidx.compose.ui.graphics.vecto
                 leadingIcon={Icon(Icons.Rounded.Search,null)},
                 trailingIcon={if(busy)Icon(Icons.Rounded.Sync,"Searching") else if(q.isNotBlank())IconButton(onClick={q="";rows=emptyList();msg="Search invoices, parties, items, payments, returns and bank records"}){Icon(Icons.Rounded.Clear,"Clear")}},
                 keyboardOptions=KeyboardOptions(imeAction=ImeAction.Search),
-                keyboardActions=KeyboardActions(onSearch={scope.launch{searchNow()}}),
+                keyboardActions=KeyboardActions(onSearch={focusManager.clearFocus();scope.launch{searchNow()}}),
             )
             Text(msg,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -222,9 +224,8 @@ private fun QuickActionTile(label:String,icon:androidx.compose.ui.graphics.vecto
                         amount="",
                         statuses=listOf("Module" to r.module),
                         meta=r.detail,
-                        swipeStartActions=listOf(SwipeAction("View",Icons.Rounded.Visibility){onOpen(r)}),
-                    ){onOpen(r)}
-                    PremiumSecondaryButton("View ${r.reference.ifBlank{r.description}}",{onOpen(r)},Modifier.fillMaxWidth(),icon=Icons.Rounded.Visibility)
+                        swipeStartActions=listOf(SwipeAction("View",Icons.Rounded.Visibility){focusManager.clearFocus();onOpen(r)}),
+                    ){focusManager.clearFocus();onOpen(r)}
                 }
             }
             Spacer(Modifier.height(8.dp))

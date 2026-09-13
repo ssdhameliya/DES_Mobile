@@ -22,6 +22,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.CircleShape
@@ -60,6 +61,7 @@ internal fun DseField(
     onValue:(String)->Unit,
 ){
     val accent=semanticFieldAccent(label)
+    val focusManager=LocalFocusManager.current
     OutlinedTextField(
         value=value,
         onValueChange=onValue,
@@ -68,6 +70,8 @@ internal fun DseField(
         singleLine=singleLine,
         readOnly=readOnly,
         enabled=enabled,
+        keyboardOptions=KeyboardOptions(imeAction=if(singleLine)ImeAction.Done else ImeAction.Default),
+        keyboardActions=KeyboardActions(onDone={focusManager.clearFocus()}),
         supportingText=supporting?.let{{Text(it,color=MaterialTheme.colorScheme.onSurfaceVariant)}},
         textStyle=MaterialTheme.typography.bodyLarge.copy(fontWeight=FontWeight.Medium),
         shape=RoundedCornerShape(18.dp),
@@ -98,6 +102,7 @@ internal fun DseNumberField(
     onValue:(String)->Unit,
 ){
     val accent=semanticFieldAccent(label)
+    val focusManager=LocalFocusManager.current
     OutlinedTextField(
         value=value,
         onValueChange={next->
@@ -111,7 +116,8 @@ internal fun DseNumberField(
         modifier=modifier.fillMaxWidth(),
         singleLine=true,
         enabled=enabled,
-        keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Decimal),
+        keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Decimal,imeAction=ImeAction.Done),
+        keyboardActions=KeyboardActions(onDone={focusManager.clearFocus()}),
         textStyle=MaterialTheme.typography.bodyLarge.copy(fontWeight=FontWeight.Medium),
         shape=RoundedCornerShape(18.dp),
         colors=OutlinedTextFieldDefaults.colors(
@@ -239,9 +245,11 @@ internal fun DsePasswordField(
     required:Boolean=true,
     enabled:Boolean=true,
     onValue:(String)->Unit,
+    onDone:()->Unit={},
 ){
     var visible by remember{mutableStateOf(false)}
     val accent=semanticFieldAccent(label)
+    val focusManager=LocalFocusManager.current
     OutlinedTextField(
         value=value,
         onValueChange=onValue,
@@ -249,6 +257,8 @@ internal fun DsePasswordField(
         modifier=modifier.fillMaxWidth(),
         singleLine=true,
         enabled=enabled,
+        keyboardOptions=KeyboardOptions(imeAction=ImeAction.Done),
+        keyboardActions=KeyboardActions(onDone={focusManager.clearFocus();onDone()}),
         visualTransformation=if(visible)androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
         trailingIcon={IconButton(onClick={visible=!visible}){Icon(if(visible)Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,if(visible)"Hide password" else "Show password",tint=accent)}},
         textStyle=MaterialTheme.typography.bodyLarge.copy(fontWeight=FontWeight.Medium),
@@ -486,7 +496,7 @@ internal fun DseKpi(label:String,value:String,modifier:Modifier=Modifier,icon:Im
             PremiumIconTile(icon,accent,size=32.dp)
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(0.dp)){
                 Text(label,style=MaterialTheme.typography.labelSmall,color=accent,fontWeight=FontWeight.Bold,maxLines=1)
-                Text(value,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.ExtraBold,color=accent,maxLines=1)
+                Text(value,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.ExtraBold,color=accent,maxLines=2)
             }
         }
     }
@@ -511,7 +521,7 @@ internal fun DseHeroKpi(
             Box(Modifier.size(36.dp).clip(RoundedCornerShape(12.dp)).background(Color.White.copy(.14f)),contentAlignment=Alignment.Center){Icon(icon,null,Modifier.size(20.dp),tint=Color.White)}
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(1.dp)){
                 Text(label,style=MaterialTheme.typography.labelSmall,color=Color.White.copy(.82f),maxLines=1)
-                Text(value,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.ExtraBold,color=Color.White,maxLines=1)
+                Text(value,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.ExtraBold,color=Color.White,maxLines=2)
                 if(supporting.isNotBlank())Text(supporting,style=MaterialTheme.typography.labelSmall,color=Color.White.copy(.76f),maxLines=1)
             }
         }
@@ -537,7 +547,7 @@ internal fun DseMetricTile(
             PremiumIconTile(icon,accent,size=30.dp)
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(0.dp)){
                 Text(label,style=MaterialTheme.typography.labelSmall,color=accent,fontWeight=FontWeight.Bold,maxLines=1)
-                Text(value,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.ExtraBold,color=accent,maxLines=1)
+                Text(value,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.ExtraBold,color=accent,maxLines=2)
             }
         }
     }
@@ -584,18 +594,18 @@ internal fun SwipeActionContainer(
         return
     }
     val density=LocalDensity.current
-    val actionWidth=76.dp
-    val startMax=with(density){(actionWidth*startActions.size.coerceAtMost(3).toFloat()).toPx()}
-    val endMax=with(density){(actionWidth*endActions.size.coerceAtMost(3).toFloat()).toPx()}
+    val actionWidth=56.dp
+    val startMax=with(density){(actionWidth*startActions.size.toFloat()).toPx()}
+    val endMax=with(density){(actionWidth*endActions.size.toFloat()).toPx()}
     var offset by remember{mutableFloatStateOf(0f)}
     Box(modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))){
         Row(Modifier.matchParentSize().background(MaterialTheme.colorScheme.surfaceVariant.copy(.55f)),verticalAlignment=Alignment.CenterVertically){
-            Row(Modifier.widthIn(max=actionWidth*3f).fillMaxHeight(),verticalAlignment=Alignment.CenterVertically){
-                startActions.take(3).forEach{action->SwipeActionButton(action,actionWidth){offset=0f;action.onClick()}}
+            Row(Modifier.width(actionWidth*startActions.size.toFloat()).fillMaxHeight(),verticalAlignment=Alignment.CenterVertically){
+                startActions.forEach{action->SwipeActionButton(action,actionWidth){offset=0f;action.onClick()}}
             }
             Spacer(Modifier.weight(1f))
-            Row(Modifier.widthIn(max=actionWidth*3f).fillMaxHeight(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.End){
-                endActions.take(3).forEach{action->SwipeActionButton(action,actionWidth){offset=0f;action.onClick()}}
+            Row(Modifier.width(actionWidth*endActions.size.toFloat()).fillMaxHeight(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.End){
+                endActions.forEach{action->SwipeActionButton(action,actionWidth){offset=0f;action.onClick()}}
             }
         }
         Box(
@@ -605,12 +615,13 @@ internal fun SwipeActionContainer(
                 .pointerInput(startActions.size,endActions.size){
                     detectHorizontalDragGestures(
                         onHorizontalDrag={change,dragAmount->
+                            change.consume()
                             offset=(offset+dragAmount).coerceIn(if(endActions.isEmpty())0f else -endMax,if(startActions.isEmpty())0f else startMax)
                         },
                         onDragEnd={
                             offset=when{
-                                offset>startMax*.32f&&startActions.isNotEmpty()->startMax
-                                offset<(-endMax*.32f)&&endActions.isNotEmpty()->-endMax
+                                offset>startMax*.28f&&startActions.isNotEmpty()->startMax
+                                offset<(-endMax*.28f)&&endActions.isNotEmpty()->-endMax
                                 else->0f
                             }
                         },
@@ -696,6 +707,7 @@ internal fun DseRegisterShell(
     content:@Composable ColumnScope.()->Unit,
 ){
     val pageScroll=rememberScrollState()
+    val focusManager=LocalFocusManager.current
     var dismissedMessage by remember{mutableStateOf("")}
     val dialogKind=remember(message){noticeKindFor(message)}
     val showDialog=message.isNotBlank()&&dialogKind!=null&&message!=dismissedMessage
@@ -704,6 +716,7 @@ internal fun DseRegisterShell(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(pageScroll)
+            .imePadding()
             .padding(horizontal=10.dp,vertical=7.dp),
         verticalArrangement=Arrangement.spacedBy(7.dp),
     ){
@@ -722,7 +735,7 @@ internal fun DseRegisterShell(
             trailingIcon=if(query.isNotBlank()){{IconButton(onClick={onQuery("")}){Icon(Icons.Rounded.Clear,"Clear",Modifier.size(18.dp))}}}else null,
             modifier=Modifier.fillMaxWidth().heightIn(min=48.dp),singleLine=true,shape=RoundedCornerShape(15.dp),
             keyboardOptions=KeyboardOptions(imeAction=ImeAction.Search),
-            keyboardActions=KeyboardActions(onSearch={onRefresh()}),
+            keyboardActions=KeyboardActions(onSearch={focusManager.clearFocus();onRefresh()}),
             colors=OutlinedTextFieldDefaults.colors(focusedBorderColor=MaterialTheme.colorScheme.primary.copy(.55f),unfocusedBorderColor=MaterialTheme.colorScheme.outline.copy(.45f),focusedContainerColor=MaterialTheme.colorScheme.surface,unfocusedContainerColor=MaterialTheme.colorScheme.surface)
         )
         if(message.isNotBlank()&&dialogKind==null){
@@ -814,7 +827,7 @@ internal fun PremiumAlertDialog(
         onDismissRequest=onDismissRequest,
         properties=DialogProperties(usePlatformDefaultWidth=false),
     ){
-        BoxWithConstraints(Modifier.fillMaxSize()){
+        BoxWithConstraints(Modifier.fillMaxSize().imePadding()){
             val compact=maxWidth<700.dp
             val panelShape=if(compact) RoundedCornerShape(topStart=30.dp,topEnd=30.dp,bottomStart=18.dp,bottomEnd=18.dp) else RoundedCornerShape(30.dp)
             val alignment=if(compact)Alignment.BottomCenter else Alignment.Center

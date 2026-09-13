@@ -160,7 +160,8 @@ private fun BankTransactionDialog(
     val selected = remember { mutableStateListOf<BankCandidate>() }
     val allocations = remember { mutableStateMapOf<Int, String>() }
     var note by remember { mutableStateOf("") }
-    var mode by remember { mutableStateOf(if (canRecon) "match" else "audit") }
+    val reconEditable = canRecon && t.status.uppercase() in setOf("UNMATCHED", "SUGGESTED", "REVIEW")
+    var mode by remember(t.id,t.status,canRecon) { mutableStateOf(if (reconEditable) "match" else "audit") }
     var category by remember { mutableStateOf("") }
     var account by remember { mutableStateOf("") }
     var paymentMode by remember { mutableStateOf("") }
@@ -173,7 +174,7 @@ private fun BankTransactionDialog(
     val amount = roundBank(if (t.credit > 0) t.credit else t.debit)
 
     LaunchedEffect(t.id) {
-        if (canRecon) {
+        if (reconEditable) {
             when (val r = api.bankCandidates(t.id)) {
                 is ApiResult.Success -> candidates = r.value.filter { it.type.uppercase() != "PURCHASE_RECON" || p.can("PURCHASE_RECON","MATCH") }
                 else -> when (val suggestion = api.bankSuggest(t.id)) {
@@ -190,7 +191,7 @@ private fun BankTransactionDialog(
         audit = (api.bankAudit(t.id) as? ApiResult.Success)?.value.orEmpty()
     }
 
-    val options = if (canRecon) listOf("match", "expense", "entry", "review", "ignore", "note", "audit") else listOf("audit")
+    val options = if (reconEditable) listOf("match", "expense", "entry", "review", "ignore", "note", "audit") else listOf("audit")
     PremiumAlertDialog(
         onDismissRequest = onClose,
         title = { Text("Bank Transaction • ${t.transactionDate}") },

@@ -3,6 +3,7 @@ package org.dse.mobile.android
 import android.Manifest
 import android.app.Activity
 import android.app.KeyguardManager
+import android.content.ClipData
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -30,6 +31,7 @@ import java.net.URL
 import java.net.URLConnection
 import java.security.MessageDigest
 import java.util.concurrent.Executor
+import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : FragmentActivity() {
     private lateinit var secureTokenStore: AndroidSecureTokenStore
@@ -54,6 +56,7 @@ class MainActivity : FragmentActivity() {
                 blockedServerHost = BuildConfig.BLOCKED_SERVER_HOST,
                 serverEditingAllowed = BuildConfig.ALLOW_SERVER_EDIT,
                 updateApkBaseUrl = BuildConfig.UPDATE_APK_BASE_URL,
+                installedVersionName = BuildConfig.VERSION_NAME,
             )
         )
         installAndroidPlatformContext(applicationContext)
@@ -173,11 +176,11 @@ class MainActivity : FragmentActivity() {
     private fun biometricAvailable(): Boolean {
         val manager = BiometricManager.from(this)
         return if (Build.VERSION.SDK_INT >= 30) {
-            val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
+            val authenticators = BiometricManager.Authenticators.BIOMETRIC_WEAK or
                 BiometricManager.Authenticators.DEVICE_CREDENTIAL
             manager.canAuthenticate(authenticators) == BiometricManager.BIOMETRIC_SUCCESS
         } else {
-            val biometric = manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
+            val biometric = manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) ==
                 BiometricManager.BIOMETRIC_SUCCESS
             biometric || deviceCredentialAvailable()
         }
@@ -186,7 +189,7 @@ class MainActivity : FragmentActivity() {
     private fun authenticateBiometric(reason: String, completion: (String, String?) -> Unit) {
         val manager = BiometricManager.from(this)
         if (Build.VERSION.SDK_INT >= 30) {
-            val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
+            val authenticators = BiometricManager.Authenticators.BIOMETRIC_WEAK or
                 BiometricManager.Authenticators.DEVICE_CREDENTIAL
             if (manager.canAuthenticate(authenticators) != BiometricManager.BIOMETRIC_SUCCESS) {
                 completion("ERROR", "Biometric or device-credential unlock is unavailable on this Android device.")
@@ -196,13 +199,13 @@ class MainActivity : FragmentActivity() {
             return
         }
 
-        val strongBiometric = manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
+        val strongBiometric = manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) ==
             BiometricManager.BIOMETRIC_SUCCESS
         val hasCredential = deviceCredentialAvailable()
         when {
             strongBiometric -> showBiometricPrompt(
                 reason,
-                BiometricManager.Authenticators.BIOMETRIC_STRONG,
+                BiometricManager.Authenticators.BIOMETRIC_WEAK,
                 hasCredential,
                 completion,
             )
@@ -217,24 +220,28 @@ class MainActivity : FragmentActivity() {
         allowCredentialFallback: Boolean,
         completion: (String, String?) -> Unit,
     ) {
+        val delivered = AtomicBoolean(false)
+        fun finish(status: String, message: String?) {
+            if (delivered.compareAndSet(false, true)) completion(status, message)
+        }
         val executor: Executor = ContextCompat.getMainExecutor(this)
         val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                completion("OK", "Authenticated securely.")
+                finish("OK", "Authenticated securely.")
             }
 
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                 if (Build.VERSION.SDK_INT < 30 && allowCredentialFallback && errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON) {
-                    launchDeviceCredential(reason, completion)
+                    launchDeviceCredential(reason) { status, message -> finish(status, message) }
                 } else {
-                    completion("ERROR", errString.toString())
+                    finish("ERROR", errString.toString())
                 }
             }
 
             override fun onAuthenticationFailed() = Unit
         })
         val builder = BiometricPrompt.PromptInfo.Builder()
-            .setTitle("DSE ERP Mobile")
+            .setTitle("Jasvi Industries Mobile")
             .setSubtitle(reason)
             .setAllowedAuthenticators(authenticators)
         if (Build.VERSION.SDK_INT < 30) {
@@ -289,10 +296,18 @@ class MainActivity : FragmentActivity() {
         val shareDir = File(cacheDir, "dse-share").apply { mkdirs() }
         val file = File(shareDir, safeName).apply { writeBytes(data) }
         val uri = FileProvider.getUriForFile(this, "$packageName.files", file)
+        val mime = when (safeName.substringAfterLast('.', "").lowercase()) {
+            "pdf" -> "application/pdf"
+            "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            "csv" -> "text/csv"
+            "txt" -> "text/plain"
+            else -> URLConnection.guessContentTypeFromName(safeName) ?: "application/octet-stream"
+        }
         val intent = Intent(Intent.ACTION_SEND).apply {
-            type = URLConnection.guessContentTypeFromName(safeName) ?: "application/octet-stream"
+            type = mime
             putExtra(Intent.EXTRA_SUBJECT, title)
             putExtra(Intent.EXTRA_STREAM, uri)
+            clipData = ClipData.newUri(contentResolver, safeName, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         startActivity(Intent.createChooser(intent, title))
@@ -300,7 +315,22 @@ class MainActivity : FragmentActivity() {
     }.getOrDefault(false)
 
     private fun openExternalUrl(value: String): Boolean = runCatching {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(value))
+        val normalized = if (value.startsWith("dseerp://", ignoreCase = true)) {
+            BuildConfig.DEEP_LINK_SCHEME + "://" + value.substringAfter("://")
+        } else value
+        val uri = Uri.parse(normalized)
+        val isWhatsApp = normalized.startsWith("whatsapp://", true) ||
+            uri.host.equals("wa.me", true) || uri.host.equals("api.whatsapp.com", true)
+        if (isWhatsApp) {
+            for (target in listOf("com.whatsapp", "com.whatsapp.w4b")) {
+                val direct = Intent(Intent.ACTION_VIEW, uri).apply { setPackage(target) }
+                if (direct.resolveActivity(packageManager) != null) {
+                    startActivity(direct)
+                    return@runCatching true
+                }
+            }
+        }
+        val intent = Intent(Intent.ACTION_VIEW, uri)
         if (intent.resolveActivity(packageManager) == null) return@runCatching false
         startActivity(intent)
         true

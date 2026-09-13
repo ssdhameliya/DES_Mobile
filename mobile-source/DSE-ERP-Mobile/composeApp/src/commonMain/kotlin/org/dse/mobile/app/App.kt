@@ -12,6 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -201,6 +202,7 @@ private fun friendlyLoginMessage(message:String):String{
  var busy by remember{mutableStateOf(false)}
  var localUpdateMessage by remember{mutableStateOf("")}
  val scope=rememberCoroutineScope()
+ val focusManager=LocalFocusManager.current
  val feedback=localUpdateMessage.ifBlank{friendlyLoginMessage(message)}
  val updateVersion=mobileUpdateVersion(message)
  val positive=feedback.startsWith("${MobileBuildInfo.RELEASE_CHANNEL} server online",ignoreCase=true)||feedback.startsWith("Connected",ignoreCase=true)||feedback.startsWith("Unlocked",ignoreCase=true)||feedback.startsWith("APK verified",ignoreCase=true)
@@ -210,7 +212,7 @@ private fun friendlyLoginMessage(message:String):String{
   BoxWithConstraints(Modifier.fillMaxSize()){
    val wide=maxWidth>700.dp
    Row(
-    Modifier.fillMaxSize().padding(horizontal=if(wide)48.dp else 18.dp,vertical=18.dp),
+    Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).imePadding().navigationBarsPadding().padding(horizontal=if(wide)48.dp else 18.dp,vertical=18.dp),
     horizontalArrangement=Arrangement.Center,
     verticalAlignment=Alignment.CenterVertically,
    ){
@@ -244,7 +246,7 @@ private fun friendlyLoginMessage(message:String):String{
      }
 
      DseField("Email or Username",identity,singleLine=true,required=true,icon=Icons.Rounded.Person,onValue={identity=it})
-     DsePasswordField("Password",password,required=true,onValue={password=it})
+     DsePasswordField("Password",password,required=true,onValue={password=it},onDone={if(!busy&&identity.isNotBlank()&&password.isNotBlank()){focusManager.clearFocus();scope.launch{busy=true;onLogin(identity,password);busy=false}}})
 
      Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
       UatStatusPill(online=if(errorLike)false else if(positive)true else null,modifier=Modifier.weight(1f,false))
@@ -255,7 +257,7 @@ private fun friendlyLoginMessage(message:String):String{
      PremiumPrimaryButton(
       text=if(busy)"Signing in…" else "Sign In",
       enabled=!busy&&identity.isNotBlank()&&password.isNotBlank(),
-      onClick={scope.launch{busy=true;onLogin(identity,password);busy=false}},
+      onClick={focusManager.clearFocus();scope.launch{busy=true;onLogin(identity,password);busy=false}},
       modifier=Modifier.fillMaxWidth(),
       leadingIcon=if(busy)null else Icons.Rounded.Login,
       trailingIcon=if(busy)null else Icons.Rounded.ArrowForward,
@@ -268,7 +270,7 @@ private fun friendlyLoginMessage(message:String):String{
      }
      PremiumBiometricPanel(
       enabled=biometricReady&&!busy,
-      onClick={scope.launch{busy=true;onBiometric();busy=false}},
+      onClick={focusManager.clearFocus();scope.launch{busy=true;onBiometric();busy=false}},
      )
 
      if(feedback.isNotBlank()&&!positive){
