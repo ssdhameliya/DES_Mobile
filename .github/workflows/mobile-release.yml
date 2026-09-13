@@ -30,7 +30,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Resolve version and create release tag from main
+      - name: Resolve version from current main
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -67,27 +67,36 @@ jobs:
           TAG="v${VERSION}"
           cd "$GITHUB_WORKSPACE"
 
+          TAG_STATE="create"
+          OLD_TAG_COMMIT=""
           REMOTE_TAG="$(git ls-remote --tags origin "refs/tags/$TAG" | awk '{print $1}')"
           if [[ -n "$REMOTE_TAG" ]]; then
             git fetch origin "refs/tags/$TAG:refs/tags/$TAG" --force
             TAG_COMMIT="$(git rev-list -n 1 "$TAG")"
-            [[ "$TAG_COMMIT" == "$HEAD_COMMIT" ]] || {
-              echo "Release tag $TAG already points to $TAG_COMMIT, not current main $HEAD_COMMIT. Bump versionName/versionCode before the next UAT release." >&2
-              exit 1
-            }
-            echo "Reusing existing release tag $TAG at current main."
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git tag -a "$TAG" -m "Mobile UAT $VERSION"
-            git push origin "$TAG"
-            echo "Created release tag $TAG from current main."
+            if [[ "$TAG_COMMIT" == "$HEAD_COMMIT" ]]; then
+              TAG_STATE="reuse"
+              echo "Release tag $TAG already points to current main."
+            else
+              if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+                echo "Release tag $TAG belongs to $TAG_COMMIT and already has a GitHub release. Bump versionName/versionCode before the next UAT release." >&2
+                exit 1
+              fi
+              git merge-base --is-ancestor "$TAG_COMMIT" "$HEAD_COMMIT" || {
+                echo "Existing tag $TAG is not an ancestor of current main; refusing to move it." >&2
+                exit 1
+              }
+              TAG_STATE="replace-stale"
+              OLD_TAG_COMMIT="$TAG_COMMIT"
+              echo "Found stale failed-build tag $TAG at $TAG_COMMIT; it may be replaced only after this build succeeds."
+            fi
           fi
 
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "TAG=$TAG" >> "$GITHUB_ENV"
           echo "MAIN_COMMIT=$HEAD_COMMIT" >> "$GITHUB_ENV"
+          echo "TAG_STATE=$TAG_STATE" >> "$GITHUB_ENV"
+          echo "OLD_TAG_COMMIT=$OLD_TAG_COMMIT" >> "$GITHUB_ENV"
 
       - name: Set up Java 25
         uses: actions/setup-java@v5
@@ -151,6 +160,49 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
           echo "UAT APK ready: $APK"
           cat "$APK.sha256"
+
+      - name: Create or recover release tag after successful build
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          case "$TAG_STATE" in
+            reuse)
+              CURRENT_TAG_COMMIT="$(git rev-list -n 1 "$TAG")"
+              [[ "$CURRENT_TAG_COMMIT" == "$MAIN_COMMIT" ]] || {
+                echo "Existing tag moved unexpectedly during build." >&2
+                exit 1
+              }
+              ;;
+            create)
+              git tag -a "$TAG" "$MAIN_COMMIT" -m "Mobile UAT $VERSION"
+              git push origin "$TAG"
+              ;;
+            replace-stale)
+              gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 && {
+                echo "A GitHub release appeared for $TAG during the build; refusing to replace the tag." >&2
+                exit 1
+              }
+              git fetch origin "refs/tags/$TAG:refs/tags/$TAG" --force
+              CURRENT_TAG_COMMIT="$(git rev-list -n 1 "$TAG")"
+              [[ "$CURRENT_TAG_COMMIT" == "$OLD_TAG_COMMIT" ]] || {
+                echo "Stale tag changed during build; refusing to replace it." >&2
+                exit 1
+              }
+              git tag -d "$TAG"
+              git tag -a "$TAG" "$MAIN_COMMIT" -m "Mobile UAT $VERSION"
+              git push --force origin "refs/tags/$TAG"
+              echo "Replaced stale failed-build tag $TAG only after successful APK build and verification."
+              ;;
+            *)
+              echo "Unknown TAG_STATE=$TAG_STATE" >&2
+              exit 1
+              ;;
+          esac
 
       - name: Publish or refresh UAT GitHub prerelease
         working-directory: mobile-source/DSE-ERP-Mobile
