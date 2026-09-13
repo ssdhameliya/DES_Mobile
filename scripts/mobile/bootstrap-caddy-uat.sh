@@ -6,6 +6,8 @@ CONFIG_FILE=/etc/caddy/Caddyfile
 STATIC_DIR=/srv/dse-erp/uat/mobile/android/uat
 MARKER="# DSE_MOBILE_UAT_STATIC_BEGIN"
 HEALTH_URL="https://${HOST}/api/runtime/health"
+PROBE_NAME="mobile-route-bootstrap-probe.txt"
+PROBE_URL="https://${HOST}/mobile/android/uat/${PROBE_NAME}"
 
 # UAT-only bootstrap. Production is intentionally not changed here.
 [[ "$HOST" == "api-uat.jasviindustries.in" ]] || {
@@ -32,7 +34,11 @@ sudo -n -u caddy test -r "$STATIC_DIR" || {
 
 CURRENT=$(mktemp)
 UPDATED=$(mktemp)
-cleanup() { rm -f "$CURRENT" "$UPDATED"; }
+PROBE_LOCAL=$(mktemp)
+cleanup() {
+  rm -f "$CURRENT" "$UPDATED" "$PROBE_LOCAL"
+  sudo -n rm -f "$STATIC_DIR/$PROBE_NAME" >/dev/null 2>&1 || true
+}
 trap cleanup EXIT
 sudo -n cat "$CONFIG_FILE" > "$CURRENT"
 
@@ -47,13 +53,13 @@ if not re.search(r'(?m)^\s*reverse_proxy\s+127\.0\.0\.1:8081\s*$', text):
     raise SystemExit('Expected UAT reverse_proxy 127.0.0.1:8081 was not found')
 PY
 
+BACKUP=""
+CHANGED=false
 if grep -Fq "$MARKER" "$CURRENT"; then
   echo "UAT Caddy mobile static route is already configured."
   sudo -n caddy validate --config "$CONFIG_FILE" --adapter caddyfile
-  exit 0
-fi
-
-python3 - "$HOST" "$CURRENT" "$UPDATED" <<'PY'
+else
+  python3 - "$HOST" "$CURRENT" "$UPDATED" <<'PY'
 import re,sys
 host,src,dst=sys.argv[1:]
 lines=open(src,encoding='utf-8').read().splitlines(True)
@@ -101,46 +107,74 @@ lines.insert(proxy_i, block)
 open(dst,'w',encoding='utf-8',newline='').writelines(lines)
 PY
 
-STAMP=$(date -u +%Y%m%dT%H%M%SZ)
-BACKUP="${CONFIG_FILE}.pre-dse-mobile-${STAMP}"
-sudo -n cp -a "$CONFIG_FILE" "$BACKUP"
-sudo -n cp "$UPDATED" "$CONFIG_FILE"
+  STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+  BACKUP="${CONFIG_FILE}.pre-dse-mobile-${STAMP}"
+  sudo -n cp -a "$CONFIG_FILE" "$BACKUP"
+  sudo -n cp "$UPDATED" "$CONFIG_FILE"
+  CHANGED=true
+fi
 
 rollback() {
-  echo "Restoring previous Caddy configuration from $BACKUP" >&2
-  sudo -n cp -a "$BACKUP" "$CONFIG_FILE"
-  sudo -n caddy validate --config "$CONFIG_FILE" --adapter caddyfile || true
-  sudo -n systemctl reload caddy || true
+  if [[ "$CHANGED" == "true" && -n "$BACKUP" ]]; then
+    echo "Restoring previous Caddy configuration from $BACKUP" >&2
+    sudo -n cp -a "$BACKUP" "$CONFIG_FILE"
+    sudo -n caddy validate --config "$CONFIG_FILE" --adapter caddyfile || true
+    sudo -n systemctl reload caddy || true
+  fi
 }
 
 if ! sudo -n caddy validate --config "$CONFIG_FILE" --adapter caddyfile; then
-  echo "New Caddy configuration failed validation." >&2
+  echo "Caddy configuration validation failed." >&2
   rollback
   exit 1
 fi
 
-if ! sudo -n systemctl reload caddy; then
-  echo "Caddy reload failed." >&2
-  rollback
-  exit 1
+if [[ "$CHANGED" == "true" ]]; then
+  if ! sudo -n systemctl reload caddy; then
+    echo "Caddy reload failed." >&2
+    rollback
+    exit 1
+  fi
 fi
 
-# Ensure the existing public UAT API still works after the proxy reload.
+# Ensure the existing public UAT API still works after the Caddy configuration is active.
 HEALTH_BODY=$(curl --fail --silent --show-error --max-time 20 "$HEALTH_URL") || {
-  echo "Public UAT health request failed after Caddy reload." >&2
+  echo "Public UAT health request failed after Caddy configuration." >&2
   rollback
   exit 1
 }
-python3 - "$HEALTH_BODY" <<'PY'
+if ! python3 - "$HEALTH_BODY" <<'PY'
 import json,sys
 r=json.loads(sys.argv[1])
 if r.get('ready') is not True or r.get('environment') != 'UAT':
-    raise SystemExit(f'Unexpected UAT health after Caddy reload: {r}')
+    raise SystemExit(f'Unexpected UAT health after Caddy configuration: {r}')
 print('PUBLIC_UAT_HEALTH_OK')
 PY
+then
+  rollback
+  exit 1
+fi
+
+# Prove the new static route itself works before declaring bootstrap success.
+printf 'DSE_MOBILE_UAT_CADDY_ROUTE_OK\n' > "$PROBE_LOCAL"
+sudo -n install -o dseerp -g dseerp -m 0644 "$PROBE_LOCAL" "$STATIC_DIR/$PROBE_NAME"
+PROBE_BODY=$(curl --fail --silent --show-error --max-time 20 "$PROBE_URL") || {
+  echo "Public UAT mobile static route probe failed." >&2
+  rollback
+  exit 1
+}
+if [[ "$PROBE_BODY" != "DSE_MOBILE_UAT_CADDY_ROUTE_OK" ]]; then
+  echo "Unexpected public UAT mobile route probe response: $PROBE_BODY" >&2
+  rollback
+  exit 1
+fi
 
 echo "MOBILE_UAT_CADDY_BOOTSTRAP_OK"
 echo "Host: $HOST"
 echo "URL prefix: /mobile/android/uat/"
 echo "Filesystem: $STATIC_DIR"
-echo "Backup: $BACKUP"
+if [[ -n "$BACKUP" ]]; then
+  echo "Backup: $BACKUP"
+else
+  echo "Backup: existing route reused; no config change required"
+fi
