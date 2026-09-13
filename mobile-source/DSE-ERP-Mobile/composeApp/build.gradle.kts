@@ -1,8 +1,8 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 
-val isWindows = System.getProperty("os.name")
-    .startsWith("Windows", ignoreCase = true)
+val isMacOs = System.getProperty("os.name")
+    .startsWith("Mac", ignoreCase = true)
 
 plugins {
     kotlin("multiplatform")
@@ -32,7 +32,7 @@ kotlin {
         }
     }
 
-    if (!isWindows) {
+    if (isMacOs) {
         iosArm64()
         iosSimulatorArm64()
 
