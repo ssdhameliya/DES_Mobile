@@ -17,8 +17,7 @@ jobs:
   deploy:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_branch == 'main' &&
-      vars.DSE_MOBILE_UAT_DEPLOY_ENABLED == 'true'
+      github.event.workflow_run.head_branch == 'main'
     name: Publish successful UAT release to server
     runs-on: ubuntu-latest
     environment: uat
@@ -31,15 +30,31 @@ jobs:
       SSH_KEY: ${{ secrets.DSE_SSH_PRIVATE_KEY }}
       SSH_KNOWN_HOSTS: ${{ secrets.DSE_SSH_KNOWN_HOSTS }}
       SSH_PORT: ${{ vars.DSE_SSH_PORT }}
+      SSH_DEPLOY_ENABLED: ${{ vars.DSE_MOBILE_UAT_DEPLOY_ENABLED }}
       PUBLIC_BASE_URL: https://api-uat.jasviindustries.in/mobile/android/uat
     steps:
+      - name: Check UAT server deployment gate
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${SSH_DEPLOY_ENABLED:-}" == 'true' ]]; then
+            echo 'enabled=true' >> "$GITHUB_OUTPUT"
+            echo 'Automatic UAT server publication is enabled.'
+          else
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            echo 'Automatic UAT server publication is disabled; GitHub prerelease remains available only.'
+          fi
+
       - name: Checkout exact successful release source
+        if: steps.gate.outputs.enabled == 'true'
         uses: actions/checkout@v6
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
       - name: Resolve and validate UAT prerelease
+        if: steps.gate.outputs.enabled == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -65,6 +80,7 @@ jobs:
           echo "TAG=$TAG" >> "$GITHUB_ENV"
 
       - name: Download exact UAT release assets
+        if: steps.gate.outputs.enabled == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -86,6 +102,7 @@ jobs:
           echo "EXPECTED_SHA=$EXPECTED_SHA" >> "$GITHUB_ENV"
 
       - name: Validate and configure SSH
+        if: steps.gate.outputs.enabled == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -100,6 +117,7 @@ jobs:
           chmod 600 ~/.ssh/known_hosts
 
       - name: Publish UAT APK through SSH
+        if: steps.gate.outputs.enabled == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -115,6 +133,7 @@ jobs:
             "bash /tmp/dse-mobile-ci-deploy/deploy-mobile-apk.sh uat /tmp/dse-mobile-ci-deploy/Jasvi-Mobile-${VERSION}-UAT.apk /tmp/dse-mobile-ci-deploy/Jasvi-Mobile-${VERSION}-UAT.apk.sha256 '${VERSION}'"
 
       - name: Verify public UAT APK and checksum
+        if: steps.gate.outputs.enabled == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -134,7 +153,7 @@ jobs:
           echo "MOBILE_UAT_AUTO_DEPLOY_OK version=$VERSION sha256=$EXPECTED_SHA"
 
       - name: Clean remote staging
-        if: always()
+        if: always() && steps.gate.outputs.enabled == 'true'
         shell: bash
         run: |
           if [[ -f ~/.ssh/dse_mobile_deploy_key ]]; then
