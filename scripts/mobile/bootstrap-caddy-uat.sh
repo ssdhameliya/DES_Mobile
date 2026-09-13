@@ -4,6 +4,7 @@ set -euo pipefail
 HOST=${1:-api-uat.jasviindustries.in}
 CONFIG_FILE=/etc/caddy/Caddyfile
 STATIC_DIR=/srv/dse-erp/uat/mobile/android/uat
+SELINUX_PATTERN="${STATIC_DIR}(/.*)?"
 MARKER="# DSE_MOBILE_UAT_STATIC_BEGIN"
 HEALTH_URL="https://${HOST}/api/runtime/health"
 PROBE_NAME="mobile-route-bootstrap-probe.txt"
@@ -22,7 +23,7 @@ sudo -n test -f "$CONFIG_FILE" || { echo "Missing Caddyfile: $CONFIG_FILE" >&2; 
 # Keep APK files isolated under the existing DSE UAT filesystem root.
 sudo -n install -d -o dseerp -g dseerp -m 0755 "$STATIC_DIR"
 
-# Refuse to continue if the Caddy service account cannot traverse/read the directory.
+# POSIX/DAC access must remain readable/traversable by the Caddy service account.
 sudo -n -u caddy test -x "$STATIC_DIR" || {
   echo "Caddy user cannot traverse $STATIC_DIR" >&2
   exit 1
@@ -35,12 +36,73 @@ sudo -n -u caddy test -r "$STATIC_DIR" || {
 CURRENT=$(mktemp)
 UPDATED=$(mktemp)
 PROBE_LOCAL=$(mktemp)
+BACKUP=""
+CHANGED=false
+SELINUX_RULE_ADDED=false
 cleanup() {
   rm -f "$CURRENT" "$UPDATED" "$PROBE_LOCAL"
   sudo -n rm -f "$STATIC_DIR/$PROBE_NAME" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 sudo -n cat "$CONFIG_FILE" > "$CURRENT"
+
+rollback_selinux() {
+  if [[ "$SELINUX_RULE_ADDED" == "true" ]]; then
+    echo "Removing SELinux file-context rule added by this failed bootstrap." >&2
+    sudo -n semanage fcontext -d "$SELINUX_PATTERN" || true
+    sudo -n restorecon -RF "$STATIC_DIR" || true
+  fi
+}
+
+rollback_caddy() {
+  if [[ "$CHANGED" == "true" && -n "$BACKUP" ]]; then
+    echo "Restoring previous Caddy configuration from $BACKUP" >&2
+    sudo -n cp -a "$BACKUP" "$CONFIG_FILE"
+    sudo -n caddy validate --config "$CONFIG_FILE" --adapter caddyfile || true
+    sudo -n systemctl reload caddy || true
+  fi
+}
+
+rollback() {
+  rollback_caddy
+  rollback_selinux
+}
+
+# Oracle Linux runs Caddy in the SELinux httpd_t domain. Files under /srv default
+# to var_t, which produces HTTP 403 even when Unix permissions are correct.
+# Add the narrowest persistent read-only web-content label for this UAT directory.
+SELINUX_MODE="$(getenforce 2>/dev/null || echo Disabled)"
+if [[ "$SELINUX_MODE" != "Disabled" ]]; then
+  SEMANAGE="$(sudo -n sh -c 'command -v semanage' 2>/dev/null || true)"
+  [[ -n "$SEMANAGE" ]] || {
+    echo "SELinux is $SELINUX_MODE but semanage is unavailable. Install policycoreutils-python-utils before retrying; SELinux will not be disabled or weakened." >&2
+    exit 1
+  }
+
+  EXISTING_RULE="$(sudo -n semanage fcontext -l | grep -F "$SELINUX_PATTERN" || true)"
+  if [[ -n "$EXISTING_RULE" ]]; then
+    if ! grep -q 'httpd_sys_content_t' <<<"$EXISTING_RULE"; then
+      echo "Conflicting SELinux fcontext rule already exists for $SELINUX_PATTERN:" >&2
+      echo "$EXISTING_RULE" >&2
+      echo "Refusing to overwrite an existing SELinux policy mapping." >&2
+      exit 1
+    fi
+    echo "SELinux web-content mapping already exists for $SELINUX_PATTERN"
+  else
+    sudo -n semanage fcontext -a -t httpd_sys_content_t "$SELINUX_PATTERN"
+    SELINUX_RULE_ADDED=true
+    echo "Added persistent SELinux mapping: $SELINUX_PATTERN -> httpd_sys_content_t"
+  fi
+
+  sudo -n restorecon -RF "$STATIC_DIR"
+  LABEL="$(sudo -n ls -Zd "$STATIC_DIR")"
+  echo "SELinux static directory label: $LABEL"
+  grep -q ':httpd_sys_content_t:' <<<"$LABEL" || {
+    echo "Static directory did not receive httpd_sys_content_t." >&2
+    rollback_selinux
+    exit 1
+  }
+fi
 
 # Guard against editing the wrong reverse proxy or an unexpected Caddy layout.
 python3 - "$HOST" "$CURRENT" <<'PY'
@@ -53,8 +115,6 @@ if not re.search(r'(?m)^\s*reverse_proxy\s+127\.0\.0\.1:8081\s*$', text):
     raise SystemExit('Expected UAT reverse_proxy 127.0.0.1:8081 was not found')
 PY
 
-BACKUP=""
-CHANGED=false
 if grep -Fq "$MARKER" "$CURRENT"; then
   echo "UAT Caddy mobile static route is already configured."
   sudo -n caddy validate --config "$CONFIG_FILE" --adapter caddyfile
@@ -64,7 +124,6 @@ import re,sys
 host,src,dst=sys.argv[1:]
 lines=open(src,encoding='utf-8').read().splitlines(True)
 
-# Find the top-level site block for the exact UAT hostname.
 start=None
 depth=0
 site=None
@@ -114,15 +173,6 @@ PY
   CHANGED=true
 fi
 
-rollback() {
-  if [[ "$CHANGED" == "true" && -n "$BACKUP" ]]; then
-    echo "Restoring previous Caddy configuration from $BACKUP" >&2
-    sudo -n cp -a "$BACKUP" "$CONFIG_FILE"
-    sudo -n caddy validate --config "$CONFIG_FILE" --adapter caddyfile || true
-    sudo -n systemctl reload caddy || true
-  fi
-}
-
 if ! sudo -n caddy validate --config "$CONFIG_FILE" --adapter caddyfile; then
   echo "Caddy configuration validation failed." >&2
   rollback
@@ -137,7 +187,6 @@ if [[ "$CHANGED" == "true" ]]; then
   fi
 fi
 
-# Ensure the existing public UAT API still works after the Caddy configuration is active.
 HEALTH_BODY=$(curl --fail --silent --show-error --max-time 20 "$HEALTH_URL") || {
   echo "Public UAT health request failed after Caddy configuration." >&2
   rollback
@@ -155,9 +204,20 @@ then
   exit 1
 fi
 
-# Prove the new static route itself works before declaring bootstrap success.
+# Prove the route with a file carrying the persistent SELinux mapping.
 printf 'DSE_MOBILE_UAT_CADDY_ROUTE_OK\n' > "$PROBE_LOCAL"
 sudo -n install -o dseerp -g dseerp -m 0644 "$PROBE_LOCAL" "$STATIC_DIR/$PROBE_NAME"
+if [[ "$SELINUX_MODE" != "Disabled" ]]; then
+  sudo -n restorecon -F "$STATIC_DIR/$PROBE_NAME"
+  PROBE_LABEL="$(sudo -n ls -Z "$STATIC_DIR/$PROBE_NAME")"
+  echo "SELinux probe label: $PROBE_LABEL"
+  grep -q ':httpd_sys_content_t:' <<<"$PROBE_LABEL" || {
+    echo "Probe file did not receive httpd_sys_content_t." >&2
+    rollback
+    exit 1
+  }
+fi
+
 PROBE_BODY=$(curl --fail --silent --show-error --max-time 20 "$PROBE_URL") || {
   echo "Public UAT mobile static route probe failed." >&2
   rollback
@@ -173,6 +233,7 @@ echo "MOBILE_UAT_CADDY_BOOTSTRAP_OK"
 echo "Host: $HOST"
 echo "URL prefix: /mobile/android/uat/"
 echo "Filesystem: $STATIC_DIR"
+echo "SELinux: $SELINUX_MODE"
 if [[ -n "$BACKUP" ]]; then
   echo "Backup: $BACKUP"
 else
