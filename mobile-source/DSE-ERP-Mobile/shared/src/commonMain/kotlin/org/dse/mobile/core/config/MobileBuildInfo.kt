@@ -6,12 +6,14 @@ data class MobileRuntimeConfig(
     val blockedServerHost: String,
     val serverEditingAllowed: Boolean,
     val updateApkBaseUrl: String,
+    val installedVersionName: String = "1.2.7",
 )
 
 object MobileBuildInfo {
     const val APP_NAME = "Jasvi Industries Mobile"
-    const val MOBILE_VERSION_NAME = "1.2.5"
-    const val MOBILE_VERSION = "1.2.5-V10.0.7-DISTRIBUTION"
+    private const val FALLBACK_MOBILE_VERSION_NAME = "1.2.7"
+    val MOBILE_VERSION_NAME: String get() = runtimeConfig.installedVersionName.trim().ifBlank { FALLBACK_MOBILE_VERSION_NAME }
+    val MOBILE_VERSION: String get() = "$MOBILE_VERSION_NAME-V10.0.7-DISTRIBUTION"
     const val SERVER_BASELINE = "10.0.7"
     // Server 10.0.7 is mobile-API compatible with 10.0.5; API v5 remains the compatibility contract.
     const val MINIMUM_COMPATIBLE_SERVER_VERSION = "10.0.1"
@@ -29,6 +31,7 @@ object MobileBuildInfo {
         blockedServerHost = "api.jasviindustries.in",
         serverEditingAllowed = true,
         updateApkBaseUrl = "$UAT_SERVER_URL/mobile/android/uat",
+        installedVersionName = FALLBACK_MOBILE_VERSION_NAME,
     )
 
     val RELEASE_CHANNEL: String get() = runtimeConfig.releaseChannel.trim().uppercase().ifBlank { "UAT" }
@@ -53,6 +56,7 @@ object MobileBuildInfo {
             defaultServerUrl = config.defaultServerUrl.trim().trimEnd('/'),
             blockedServerHost = config.blockedServerHost.trim().lowercase(),
             updateApkBaseUrl = config.updateApkBaseUrl.trim().trimEnd('/'),
+            installedVersionName = config.installedVersionName.trim().ifBlank { FALLBACK_MOBILE_VERSION_NAME },
         )
     }
 

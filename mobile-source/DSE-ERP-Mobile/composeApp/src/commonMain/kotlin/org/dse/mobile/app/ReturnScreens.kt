@@ -98,7 +98,7 @@ internal fun ReturnsWorkspace(api:DseErpHttpClient,p:PermissionContext,sales:Boo
         val remaining=(d.total-d.refund).coerceAtLeast(0.0)
         DseRecordActionSheet("${if(sales)"Sales" else "Purchase"} Return ${d.no}","Return lifecycle actions",buildList{
             add(PremiumActionSpec("View Return",{selected=r;details=d}))
-            add(PremiumActionSpec("PDF / Print",{msg=if(shareBusinessPdf(returnBusinessDocument(d)))"Return PDF opened" else "Unable to open return PDF"}))
+            add(PremiumActionSpec("Share PDF",{msg=if(shareBusinessPdf(returnBusinessDocument(d)))"Return PDF opened" else "Unable to open return PDF"}))
             add(PremiumActionSpec("Excel",{msg=if(shareBusinessXlsx(returnBusinessDocument(d)))"Return Excel opened" else "Unable to open return Excel"}))
             add(PremiumActionSpec("Open Original",{onDeepLink("dseerp://${if(sales)"sales" else "purchase"}/${urlEncodeReturn(d.invoice)}")}))
             if(p.can(module,"APPROVE")){
@@ -130,7 +130,7 @@ internal fun ReturnsWorkspace(api:DseErpHttpClient,p:PermissionContext,sales:Boo
             if(d.attachment.isNotBlank())OutlinedButton(onClick={scope.launch{when(val a=api.returnAttachmentFile(d.no)){is ApiResult.Success->{val name=returnFileName(d.attachment,"return-${d.no}.bin");if(!platformShareFile("Return ${d.no} attachment",name,a.value))msg="Unable to open return attachment"};else->msg=a.readableMessage()}}}){Icon(Icons.Rounded.OpenInNew,null);Text("Open Return Attachment")}
             Text("Actions",fontWeight=FontWeight.SemiBold)
             PremiumActionGrid(buildList{
-                add(PremiumActionSpec("PDF / Print",{msg=if(shareBusinessPdf(returnBusinessDocument(d)))"Return PDF opened" else "Unable to open return PDF"}))
+                add(PremiumActionSpec("Share PDF",{msg=if(shareBusinessPdf(returnBusinessDocument(d)))"Return PDF opened" else "Unable to open return PDF"}))
                 add(PremiumActionSpec("Excel",{msg=if(shareBusinessXlsx(returnBusinessDocument(d)))"Return Excel opened" else "Unable to open return Excel"}))
                 add(PremiumActionSpec("Open Original",{onDeepLink("dseerp://${if(sales)"sales" else "purchase"}/${urlEncodeReturn(d.invoice)}")}))
                 if(pending&&p.can(module,"APPROVE")){
