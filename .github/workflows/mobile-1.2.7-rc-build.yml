@@ -41,6 +41,64 @@ jobs:
         shell: bash
         run: sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
 
+      - name: Prepare safe RC patch and regression expectations
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          patch = Path('scripts/apply-mobile-1.2.7-fixes.py')
+          text = patch.read_text(encoding='utf-8')
+          start_marker = 'app_dir = MOBILE / "composeApp" / "src" / "commonMain" / "kotlin" / "org" / "dse" / "mobile" / "app"'
+          end_marker = '# -----------------------------------------------------------------------------\n# Bank reconciliation:'
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+          safe_block = r'''app_dir = MOBILE / "composeApp" / "src" / "commonMain" / "kotlin" / "org" / "dse" / "mobile" / "app"
+          for path in app_dir.glob("*.kt"):
+              text = path.read_text(encoding="utf-8")
+              text = text.replace('"PDF / Print"', '"Share PDF"').replace('"Print PDF"', '"Share PDF"')
+              if path.name == "DocumentScreens.kt":
+                  text = re.sub(
+                      r'(?m)^\s*OutlinedButton\(onClick=\{saveViewPrompt=true\}\)\{[^\n]*Text\("Save View"\)\}\s*$',
+                      '',
+                      text,
+                  )
+                  text = re.sub(
+                      r'(?m)^\s*if\(savedViews\.isNotEmpty\(\)\)DseSelect\("Saved View"[^\n]*$',
+                      '',
+                      text,
+                  )
+              elif path.name == "QuotationScreens.kt":
+                  text = re.sub(
+                      r';if\(savedViews\.isNotEmpty\(\)\)DseSelect\("Saved View"[^\n]*?;PremiumSecondaryButton\("Save View",\{saveViewPrompt=true\},icon=Icons\.Rounded\.BookmarkAdd\)',
+                      '',
+                      text,
+                  )
+              relpath = str(path.relative_to(ROOT)).replace("\\", "/")
+              save(relpath, text)
+
+          '''
+          patch.write_text(text[:start] + safe_block + text[end:], encoding='utf-8', newline='\n')
+
+          compat = Path('mobile-source/DSE-ERP-Mobile/shared/src/commonTest/kotlin/org/dse/mobile/core/MobileCompatibilityTest.kt')
+          value = compat.read_text(encoding='utf-8')
+          value = value.replace(
+              'policy(iosMin = "1.2.0", iosLatest = "1.2.5"), "iOS", "1.2.5")',
+              'policy(iosMin = "1.2.0", iosLatest = "1.2.6"), "iOS", "1.2.5")',
+          )
+          value = value.replace('assertEquals("1.2.5", result.latestVersion)', 'assertEquals("1.2.6", result.latestVersion)')
+          compat.write_text(value, encoding='utf-8', newline='\n')
+
+          phase = Path('mobile-source/DSE-ERP-Mobile/shared/src/commonTest/kotlin/org/dse/mobile/core/MobilePhaseContractTest.kt')
+          value = phase.read_text(encoding='utf-8')
+          value = value.replace(
+              'assertEquals("1.2.5",MobileBuildInfo.MOBILE_VERSION_NAME);assertEquals("1.2.5-V10.0.7-DISTRIBUTION",MobileBuildInfo.MOBILE_VERSION)',
+              'assertEquals("1.2.7",MobileBuildInfo.MOBILE_VERSION_NAME);assertEquals("1.2.7-V10.0.7-DISTRIBUTION",MobileBuildInfo.MOBILE_VERSION)',
+          )
+          phase.write_text(value, encoding='utf-8', newline='\n')
+          PY
+
       - name: Apply Mobile 1.2.7 corrective patch
         shell: bash
         run: python3 scripts/apply-mobile-1.2.7-fixes.py
