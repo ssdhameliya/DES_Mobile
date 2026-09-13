@@ -92,7 +92,7 @@ jobs:
           fi
 
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "VERSION_CODE=$SOURCE_CODE" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "TAG=$TAG" >> "$GITHUB_ENV"
           echo "MAIN_COMMIT=$HEAD_COMMIT" >> "$GITHUB_ENV"
           echo "TAG_STATE=$TAG_STATE" >> "$GITHUB_ENV"
