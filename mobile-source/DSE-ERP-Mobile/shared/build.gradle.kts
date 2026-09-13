@@ -1,7 +1,7 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
-val isWindows = System.getProperty("os.name")
-    .startsWith("Windows", ignoreCase = true)
+val isMacOs = System.getProperty("os.name")
+    .startsWith("Mac", ignoreCase = true)
 
 plugins {
     kotlin("multiplatform")
@@ -26,7 +26,7 @@ kotlin {
         }
     }
 
-    if (!isWindows) {
+    if (isMacOs) {
         iosArm64()
         iosSimulatorArm64()
     }
@@ -48,7 +48,7 @@ kotlin {
             implementation("io.ktor:ktor-client-okhttp:3.5.2")
         }
 
-        if (!isWindows) {
+        if (isMacOs) {
             val iosMain by getting {
                 dependencies {
                     implementation("io.ktor:ktor-client-darwin:3.5.2")
