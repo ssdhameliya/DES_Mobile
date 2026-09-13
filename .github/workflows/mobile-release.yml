@@ -1,0 +1,200 @@
+name: Mobile UAT Release
+run-name: Mobile UAT from main @ ${{ github.sha }}
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'mobile-source/DSE-ERP-Mobile/**'
+      - '.github/workflows/mobile-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mobile-uat-main
+  cancel-in-progress: false
+
+jobs:
+  release-uat:
+    name: Build and publish signed UAT release
+    runs-on: ubuntu-latest
+    environment: uat
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version and create release tag from main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          [[ "${GITHUB_REF}" == "refs/heads/main" ]] || {
+            echo "UAT release must run from main; got ${GITHUB_REF}" >&2
+            exit 1
+          }
+
+          git fetch origin main --tags --force
+          HEAD_COMMIT="$(git rev-parse HEAD)"
+          MAIN_COMMIT="$(git rev-parse origin/main)"
+          [[ "$HEAD_COMMIT" == "$MAIN_COMMIT" ]] || {
+            echo "Workflow source is not the current origin/main commit: head=$HEAD_COMMIT main=$MAIN_COMMIT" >&2
+            exit 1
+          }
+
+          cd mobile-source/DSE-ERP-Mobile
+          SOURCE_VERSION="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' androidApp/build.gradle.kts | head -1)"
+          SOURCE_CODE="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' androidApp/build.gradle.kts | head -1)"
+          [[ "$SOURCE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "Invalid Android versionName: $SOURCE_VERSION" >&2
+            exit 1
+          }
+          [[ "$SOURCE_CODE" =~ ^[0-9]+$ ]] || {
+            echo "Unable to resolve Android versionCode: $SOURCE_CODE" >&2
+            exit 1
+          }
+
+          VERSION="$SOURCE_VERSION"
+          VERSION_CODE="$SOURCE_CODE"
+          TAG="v${VERSION}"
+          cd "$GITHUB_WORKSPACE"
+
+          REMOTE_TAG="$(git ls-remote --tags origin "refs/tags/$TAG" | awk '{print $1}')"
+          if [[ -n "$REMOTE_TAG" ]]; then
+            git fetch origin "refs/tags/$TAG:refs/tags/$TAG" --force
+            TAG_COMMIT="$(git rev-list -n 1 "$TAG")"
+            [[ "$TAG_COMMIT" == "$HEAD_COMMIT" ]] || {
+              echo "Release tag $TAG already points to $TAG_COMMIT, not current main $HEAD_COMMIT. Bump versionName/versionCode before the next UAT release." >&2
+              exit 1
+            }
+            echo "Reusing existing release tag $TAG at current main."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -m "Mobile UAT $VERSION"
+            git push origin "$TAG"
+            echo "Created release tag $TAG from current main."
+          fi
+
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "MAIN_COMMIT=$HEAD_COMMIT" >> "$GITHUB_ENV"
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install required Android SDK packages
+        shell: bash
+        run: sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Configure UAT signing
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.JASVI_UAT_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.JASVI_UAT_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.JASVI_UAT_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.JASVI_UAT_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in KEYSTORE_BASE64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            [[ -n "${!name:-}" ]] || { echo "Missing GitHub UAT environment signing secret: $name" >&2; exit 1; }
+          done
+
+          KEYSTORE="$RUNNER_TEMP/jasvi-uat-release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          mkdir -p "$HOME/.gradle"
+          cat > "$HOME/.gradle/gradle.properties" <<EOF
+          jasviUatStoreFile=$KEYSTORE
+          jasviUatStorePassword=$STORE_PASSWORD
+          jasviUatKeyAlias=$KEY_ALIAS
+          jasviUatKeyPassword=$KEY_PASSWORD
+          EOF
+          chmod 600 "$KEYSTORE" "$HOME/.gradle/gradle.properties"
+
+      - name: Build signed UAT APK
+        working-directory: mobile-source/DSE-ERP-Mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :androidApp:assembleUatRelease --console=plain
+
+      - name: Prepare and verify UAT artifacts
+        working-directory: mobile-source/DSE-ERP-Mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE='androidApp/build/outputs/apk/uat/release/androidApp-uat-release.apk'
+          [[ -f "$SOURCE" ]] || { echo "UAT release APK not found: $SOURCE" >&2; exit 1; }
+
+          mkdir -p release-artifacts
+          APK="release-artifacts/Jasvi-Mobile-${VERSION}-UAT.apk"
+          cp "$SOURCE" "$APK"
+          sha256sum "$APK" > "$APK.sha256"
+
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
+          echo "UAT APK ready: $APK"
+          cat "$APK.sha256"
+
+      - name: Publish or refresh UAT GitHub prerelease
+        working-directory: mobile-source/DSE-ERP-Mobile
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          APK="release-artifacts/Jasvi-Mobile-${VERSION}-UAT.apk"
+          SHA="$APK.sha256"
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APK" "$SHA" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+            gh release edit "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Jasvi Mobile ${VERSION} - UAT" \
+              --prerelease=true
+          else
+            gh release create "$TAG" "$APK" "$SHA" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Jasvi Mobile ${VERSION} - UAT" \
+              --generate-notes \
+              --prerelease \
+              --verify-tag
+          fi
+
+          IS_PRERELEASE="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq '.isPrerelease')"
+          [[ "$IS_PRERELEASE" == 'true' ]] || {
+            echo "UAT release $TAG is not marked prerelease." >&2
+            exit 1
+          }
+
+      - name: UAT release summary
+        shell: bash
+        run: |
+          {
+            echo '### Mobile UAT release created from main'
+            echo "- Main commit: $MAIN_COMMIT"
+            echo "- Tag: $TAG"
+            echo "- Version: $VERSION"
+            echo "- Version code: $VERSION_CODE"
+            echo '- Merge/push to main automatically produced the signed UAT release.'
+            echo '- Production is NOT automatic.'
+            echo '- After UAT validation, run the separate **Mobile PROD Release** workflow manually.'
+          } >> "$GITHUB_STEP_SUMMARY"

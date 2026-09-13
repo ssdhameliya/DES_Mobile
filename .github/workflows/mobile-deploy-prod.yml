@@ -1,0 +1,184 @@
+name: Mobile PROD Release
+run-name: Mobile PROD ${{ inputs.tag }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'UAT-approved mobile tag (for example v1.2.6)'
+        required: true
+        type: string
+      confirm_production:
+        description: 'I confirm this UAT release is approved for production'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mobile-production
+  cancel-in-progress: false
+
+jobs:
+  promote-prod:
+    name: Build approved PROD release
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 30
+
+    steps:
+      - name: Validate manual approval input
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ '${{ inputs.confirm_production }}' == 'true' ]] || {
+            echo 'Production confirmation was not approved.' >&2
+            exit 1
+          }
+
+          RAW='${{ inputs.tag }}'
+          [[ "$RAW" =~ ^[vV][0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo 'Tag must look like vX.Y.Z (uppercase V is accepted).' >&2
+            exit 1
+          }
+          TAG="v${RAW:1}"
+          VERSION="${TAG#v}"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Checkout UAT-approved tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+
+      - name: Validate tagged mobile source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd mobile-source/DSE-ERP-Mobile
+          SOURCE_VERSION="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' androidApp/build.gradle.kts | head -1)"
+          SOURCE_CODE="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' androidApp/build.gradle.kts | head -1)"
+          [[ "$SOURCE_VERSION" == "$VERSION" ]] || {
+            echo "Tag/source version mismatch: tag=$VERSION source=$SOURCE_VERSION" >&2
+            exit 1
+          }
+          [[ -n "$SOURCE_CODE" ]] || { echo 'Unable to resolve Android versionCode.' >&2; exit 1; }
+          echo "VERSION_CODE=$SOURCE_CODE" >> "$GITHUB_ENV"
+
+          cd "$GITHUB_WORKSPACE"
+          IS_PRERELEASE="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq '.isPrerelease')"
+          [[ "$IS_PRERELEASE" == 'true' ]] || {
+            echo "Release $TAG is not an active UAT prerelease." >&2
+            exit 1
+          }
+
+          ASSETS="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
+          grep -Fxq "Jasvi-Mobile-${VERSION}-UAT.apk" <<<"$ASSETS" || {
+            echo "Missing UAT APK for $VERSION in GitHub release." >&2
+            exit 1
+          }
+          grep -Fxq "Jasvi-Mobile-${VERSION}-UAT.apk.sha256" <<<"$ASSETS" || {
+            echo "Missing UAT checksum for $VERSION in GitHub release." >&2
+            exit 1
+          }
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install required Android SDK packages
+        shell: bash
+        run: sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Configure PROD signing
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.JASVI_PROD_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.JASVI_PROD_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.JASVI_PROD_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.JASVI_PROD_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in KEYSTORE_BASE64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            [[ -n "${!name:-}" ]] || { echo "Missing GitHub production environment signing secret: $name" >&2; exit 1; }
+          done
+
+          KEYSTORE="$RUNNER_TEMP/jasvi-prod-release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          mkdir -p "$HOME/.gradle"
+          cat > "$HOME/.gradle/gradle.properties" <<EOF
+          jasviProdStoreFile=$KEYSTORE
+          jasviProdStorePassword=$STORE_PASSWORD
+          jasviProdKeyAlias=$KEY_ALIAS
+          jasviProdKeyPassword=$KEY_PASSWORD
+          EOF
+          chmod 600 "$KEYSTORE" "$HOME/.gradle/gradle.properties"
+
+      - name: Build signed PROD APK
+        working-directory: mobile-source/DSE-ERP-Mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :androidApp:assembleProdRelease --console=plain
+
+      - name: Prepare and verify PROD artifacts
+        working-directory: mobile-source/DSE-ERP-Mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE='androidApp/build/outputs/apk/prod/release/androidApp-prod-release.apk'
+          [[ -f "$SOURCE" ]] || { echo "PROD release APK not found: $SOURCE" >&2; exit 1; }
+
+          mkdir -p release-artifacts
+          APK="release-artifacts/Jasvi-Mobile-${VERSION}-PROD.apk"
+          cp "$SOURCE" "$APK"
+          sha256sum "$APK" > "$APK.sha256"
+
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
+          echo "PROD APK ready: $APK"
+          cat "$APK.sha256"
+
+      - name: Attach PROD package and promote GitHub release to stable
+        working-directory: mobile-source/DSE-ERP-Mobile
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" \
+            "release-artifacts/Jasvi-Mobile-${VERSION}-PROD.apk" \
+            "release-artifacts/Jasvi-Mobile-${VERSION}-PROD.apk.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+          gh release edit "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --prerelease=false \
+            --title "Jasvi Mobile ${VERSION}"
+
+          STABLE="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq '.isPrerelease')"
+          [[ "$STABLE" == 'false' ]] || { echo "GitHub release $TAG was not promoted to stable." >&2; exit 1; }
+
+      - name: Production release summary
+        shell: bash
+        run: |
+          {
+            echo '### Mobile production release approved'
+            echo "- Tag: $TAG"
+            echo "- Version: $VERSION"
+            echo "- Version code: $VERSION_CODE"
+            echo '- PROD APK was built only after explicit manual GitHub approval.'
+            echo '- Server publication to the production mobile update URL is a separate deployment step until its upload path is wired into this workflow.'
+          } >> "$GITHUB_STEP_SUMMARY"
