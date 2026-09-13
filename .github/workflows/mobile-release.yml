@@ -8,6 +8,7 @@ on:
     paths:
       - 'mobile-source/DSE-ERP-Mobile/**'
       - '.github/workflows/mobile-release.yml'
+      - 'scripts/mobile/deploy-mobile-apk.sh'
   workflow_dispatch:
 
 permissions:
@@ -19,10 +20,18 @@ concurrency:
 
 jobs:
   release-uat:
-    name: Build and publish signed UAT release
+    name: Build, publish and deploy signed UAT release
     runs-on: ubuntu-latest
     environment: uat
-    timeout-minutes: 30
+    timeout-minutes: 35
+    env:
+      SSH_HOST: ${{ secrets.DSE_SSH_HOST }}
+      SSH_USER: ${{ secrets.DSE_SSH_USER }}
+      SSH_KEY: ${{ secrets.DSE_SSH_PRIVATE_KEY }}
+      SSH_KNOWN_HOSTS: ${{ secrets.DSE_SSH_KNOWN_HOSTS }}
+      SSH_PORT: ${{ vars.DSE_SSH_PORT }}
+      SSH_DEPLOY_ENABLED: ${{ vars.DSE_MOBILE_UAT_DEPLOY_ENABLED }}
+      PUBLIC_BASE_URL: https://api-uat.jasviindustries.in/mobile/android/uat
 
     steps:
       - name: Checkout current main
@@ -237,6 +246,83 @@ jobs:
             exit 1
           }
 
+      - name: Validate UAT SSH deployment configuration
+        if: vars.DSE_MOBILE_UAT_DEPLOY_ENABLED == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in SSH_HOST SSH_USER SSH_KEY SSH_KNOWN_HOSTS; do
+            [[ -n "${!name:-}" ]] || { echo "Missing GitHub uat environment SSH secret: $name" >&2; exit 1; }
+          done
+          echo "SSH_PORT=${SSH_PORT:-22}" >> "$GITHUB_ENV"
+
+      - name: Configure strict SSH host verification
+        if: vars.DSE_MOBILE_UAT_DEPLOY_ENABLED == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/dse_mobile_deploy_key
+          chmod 600 ~/.ssh/dse_mobile_deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload UAT APK to server staging
+        if: vars.DSE_MOBILE_UAT_DEPLOY_ENABLED == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="mobile-source/DSE-ERP-Mobile/release-artifacts/Jasvi-Mobile-${VERSION}-UAT.apk"
+          SHA="$APK.sha256"
+          ssh -i ~/.ssh/dse_mobile_deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=yes \
+            "$SSH_USER@$SSH_HOST" 'mkdir -p /tmp/dse-mobile-ci-deploy'
+          scp -i ~/.ssh/dse_mobile_deploy_key -P "$SSH_PORT" -o StrictHostKeyChecking=yes \
+            "$APK" "$SHA" scripts/mobile/deploy-mobile-apk.sh \
+            "$SSH_USER@$SSH_HOST:/tmp/dse-mobile-ci-deploy/"
+
+      - name: Install UAT APK on server
+        if: vars.DSE_MOBILE_UAT_DEPLOY_ENABLED == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/dse_mobile_deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=yes \
+            "$SSH_USER@$SSH_HOST" \
+            "bash /tmp/dse-mobile-ci-deploy/deploy-mobile-apk.sh uat /tmp/dse-mobile-ci-deploy/Jasvi-Mobile-${VERSION}-UAT.apk /tmp/dse-mobile-ci-deploy/Jasvi-Mobile-${VERSION}-UAT.apk.sha256 '${VERSION}'"
+
+      - name: Verify public UAT APK and checksum
+        if: vars.DSE_MOBILE_UAT_DEPLOY_ENABLED == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOCAL_APK="mobile-source/DSE-ERP-Mobile/release-artifacts/Jasvi-Mobile-${VERSION}-UAT.apk"
+          EXPECTED_SHA="$(sha256sum "$LOCAL_APK" | awk '{print tolower($1)}')"
+          PUBLIC_APK="$PUBLIC_BASE_URL/Jasvi-Mobile-${VERSION}-UAT.apk"
+          PUBLIC_SHA="$PUBLIC_APK.sha256"
+
+          curl --fail --location --silent --show-error --max-time 120 "$PUBLIC_APK" -o published-uat.apk
+          ACTUAL_SHA="$(sha256sum published-uat.apk | awk '{print tolower($1)}')"
+          [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" ]] || {
+            echo "Public UAT APK checksum mismatch: expected=$EXPECTED_SHA actual=$ACTUAL_SHA" >&2
+            exit 1
+          }
+
+          SHA_BODY="$(curl --fail --silent --show-error --max-time 20 "$PUBLIC_SHA")"
+          PUBLISHED_SHA="$(printf '%s\n' "$SHA_BODY" | awk 'NR==1 {print tolower($1)}')"
+          [[ "$PUBLISHED_SHA" == "$EXPECTED_SHA" ]] || {
+            echo "Public UAT checksum file mismatch: expected=$EXPECTED_SHA published=$PUBLISHED_SHA" >&2
+            exit 1
+          }
+          echo "MOBILE_UAT_PUBLICATION_OK version=$VERSION sha256=$EXPECTED_SHA"
+
+      - name: Clean remote UAT upload staging
+        if: always() && vars.DSE_MOBILE_UAT_DEPLOY_ENABLED == 'true'
+        shell: bash
+        run: |
+          if [[ -f ~/.ssh/dse_mobile_deploy_key ]]; then
+            ssh -i ~/.ssh/dse_mobile_deploy_key -p "${SSH_PORT:-22}" -o StrictHostKeyChecking=yes \
+              "$SSH_USER@$SSH_HOST" 'rm -rf /tmp/dse-mobile-ci-deploy' || true
+          fi
+
       - name: UAT release summary
         shell: bash
         run: |
@@ -247,6 +333,11 @@ jobs:
             echo "- Version: $VERSION"
             echo "- Version code: $VERSION_CODE"
             echo '- Merge/push to main automatically produced the signed UAT release.'
+            if [[ "$SSH_DEPLOY_ENABLED" == 'true' ]]; then
+              echo '- Signed APK and checksum were also published to the UAT server and verified over public HTTPS.'
+            else
+              echo '- UAT server SSH publication is currently disabled until the one-time server bootstrap is completed.'
+            fi
             echo '- Production is NOT automatic.'
             echo '- After UAT validation, run the separate **Mobile PROD Release** workflow manually.'
           } >> "$GITHUB_STEP_SUMMARY"
