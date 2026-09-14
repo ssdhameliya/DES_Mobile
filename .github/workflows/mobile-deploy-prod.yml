@@ -1,11 +1,11 @@
-name: Mobile PROD Release
+name: Mobile PROD
 run-name: Mobile PROD ${{ inputs.tag }}
 
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'UAT-approved mobile tag (for example v1.2.6)'
+        description: 'UAT-approved tag, for example v1.2.8'
         required: true
         type: string
       confirm_production:
@@ -22,14 +22,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  promote-prod:
-    name: Build approved PROD release
+  prod:
+    name: Build, publish and deploy PROD
     runs-on: ubuntu-latest
     environment: production
-    timeout-minutes: 30
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SSH_HOST: ${{ secrets.DSE_SSH_HOST }}
+      SSH_USER: ${{ secrets.DSE_SSH_USER }}
+      SSH_KEY: ${{ secrets.DSE_SSH_PRIVATE_KEY }}
+      SSH_KNOWN_HOSTS: ${{ secrets.DSE_SSH_KNOWN_HOSTS }}
+      SSH_PORT: ${{ vars.DSE_SSH_PORT }}
+      SSH_DEPLOY_ENABLED: ${{ vars.DSE_MOBILE_PROD_DEPLOY_ENABLED }}
+      PUBLIC_BASE_URL: https://api.jasviindustries.in/mobile/android/prod
+      PUBLIC_HEALTH_URL: https://api.jasviindustries.in/api/runtime/health
 
     steps:
-      - name: Validate manual approval input
+      - name: Require explicit PROD approval
         shell: bash
         run: |
           set -euo pipefail
@@ -37,16 +47,22 @@ jobs:
             echo 'Production confirmation was not approved.' >&2
             exit 1
           }
-
           RAW='${{ inputs.tag }}'
-          [[ "$RAW" =~ ^[vV][0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-            echo 'Tag must look like vX.Y.Z (uppercase V is accepted).' >&2
+          [[ "$RAW" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "Tag must look exactly like vX.Y.Z: $RAW" >&2
             exit 1
           }
-          TAG="v${RAW:1}"
-          VERSION="${TAG#v}"
-          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          [[ "${SSH_DEPLOY_ENABLED:-}" == 'true' ]] || {
+            echo 'DSE_MOBILE_PROD_DEPLOY_ENABLED must be true in the production environment.' >&2
+            exit 1
+          }
+          for name in SSH_HOST SSH_USER SSH_KEY SSH_KNOWN_HOSTS; do
+            [[ -n "${!name:-}" ]] || { echo "Missing GitHub production environment SSH secret: $name" >&2; exit 1; }
+          done
+          VERSION="${RAW#v}"
+          echo "TAG=$RAW" >> "$GITHUB_ENV"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "SSH_PORT=${SSH_PORT:-22}" >> "$GITHUB_ENV"
 
       - name: Checkout UAT-approved tag
         uses: actions/checkout@v6
@@ -54,38 +70,32 @@ jobs:
           ref: ${{ inputs.tag }}
           fetch-depth: 0
 
-      - name: Validate tagged mobile source
+      - name: Validate approved UAT release
         shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          cd mobile-source/DSE-ERP-Mobile
-          SOURCE_VERSION="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' androidApp/build.gradle.kts | head -1)"
-          SOURCE_CODE="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' androidApp/build.gradle.kts | head -1)"
-          [[ "$SOURCE_VERSION" == "$VERSION" ]] || {
-            echo "Tag/source version mismatch: tag=$VERSION source=$SOURCE_VERSION" >&2
-            exit 1
-          }
-          [[ -n "$SOURCE_CODE" ]] || { echo 'Unable to resolve Android versionCode.' >&2; exit 1; }
+          SOURCE_VERSION="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' mobile-source/DSE-ERP-Mobile/androidApp/build.gradle.kts | head -1)"
+          SOURCE_CODE="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' mobile-source/DSE-ERP-Mobile/androidApp/build.gradle.kts | head -1)"
+          [[ "$SOURCE_VERSION" == "$VERSION" ]] || { echo "Tag/source version mismatch: tag=$VERSION source=$SOURCE_VERSION" >&2; exit 1; }
+          [[ "$SOURCE_CODE" =~ ^[0-9]+$ ]] || { echo 'Unable to resolve Android versionCode.' >&2; exit 1; }
           echo "VERSION_CODE=$SOURCE_CODE" >> "$GITHUB_ENV"
 
-          cd "$GITHUB_WORKSPACE"
+          git fetch origin main --tags --force
+          TAG_COMMIT="$(git rev-list -n 1 "$TAG")"
+          git merge-base --is-ancestor "$TAG_COMMIT" origin/main || {
+            echo "Approved tag $TAG is not part of main history." >&2
+            exit 1
+          }
+
           IS_PRERELEASE="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq '.isPrerelease')"
           [[ "$IS_PRERELEASE" == 'true' ]] || {
-            echo "Release $TAG is not an active UAT prerelease." >&2
+            echo "Release $TAG is already stable/PROD or is not an active UAT prerelease." >&2
             exit 1
           }
 
           ASSETS="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
-          grep -Fxq "Jasvi-Mobile-${VERSION}-UAT.apk" <<<"$ASSETS" || {
-            echo "Missing UAT APK for $VERSION in GitHub release." >&2
-            exit 1
-          }
-          grep -Fxq "Jasvi-Mobile-${VERSION}-UAT.apk.sha256" <<<"$ASSETS" || {
-            echo "Missing UAT checksum for $VERSION in GitHub release." >&2
-            exit 1
-          }
+          grep -Fxq "Jasvi-Mobile-${VERSION}-UAT.apk" <<<"$ASSETS" || { echo "Missing UAT APK for $VERSION." >&2; exit 1; }
+          grep -Fxq "Jasvi-Mobile-${VERSION}-UAT.apk.sha256" <<<"$ASSETS" || { echo "Missing UAT checksum for $VERSION." >&2; exit 1; }
 
       - name: Set up Java 25
         uses: actions/setup-java@v5
@@ -97,7 +107,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install required Android SDK packages
+      - name: Install Android SDK packages
         shell: bash
         run: sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
 
@@ -111,9 +121,8 @@ jobs:
         run: |
           set -euo pipefail
           for name in KEYSTORE_BASE64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
-            [[ -n "${!name:-}" ]] || { echo "Missing GitHub production environment signing secret: $name" >&2; exit 1; }
+            [[ -n "${!name:-}" ]] || { echo "Missing GitHub production signing secret: $name" >&2; exit 1; }
           done
-
           KEYSTORE="$RUNNER_TEMP/jasvi-prod-release.jks"
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
           mkdir -p "$HOME/.gradle"
@@ -140,45 +149,136 @@ jobs:
           set -euo pipefail
           SOURCE='androidApp/build/outputs/apk/prod/release/androidApp-prod-release.apk'
           [[ -f "$SOURCE" ]] || { echo "PROD release APK not found: $SOURCE" >&2; exit 1; }
-
           mkdir -p release-artifacts
           APK="release-artifacts/Jasvi-Mobile-${VERSION}-PROD.apk"
           cp "$SOURCE" "$APK"
           sha256sum "$APK" > "$APK.sha256"
-
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
-          echo "PROD APK ready: $APK"
-          cat "$APK.sha256"
 
-      - name: Attach PROD package and promote GitHub release to stable
+      - name: Attach PROD assets to approved release
         working-directory: mobile-source/DSE-ERP-Mobile
         shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           gh release upload "$TAG" \
             "release-artifacts/Jasvi-Mobile-${VERSION}-PROD.apk" \
             "release-artifacts/Jasvi-Mobile-${VERSION}-PROD.apk.sha256" \
-            --repo "$GITHUB_REPOSITORY" \
-            --clobber
+            --repo "$GITHUB_REPOSITORY" --clobber
 
-          gh release edit "$TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --prerelease=false \
-            --title "Jasvi Mobile ${VERSION}"
+          IS_PRERELEASE="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq '.isPrerelease')"
+          [[ "$IS_PRERELEASE" == 'true' ]] || { echo "Release $TAG changed state during PROD build." >&2; exit 1; }
 
+      - name: Download and verify exact PROD release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf deploy-artifacts
+          mkdir -p deploy-artifacts
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir deploy-artifacts \
+            --pattern "Jasvi-Mobile-${VERSION}-PROD.apk" \
+            --pattern "Jasvi-Mobile-${VERSION}-PROD.apk.sha256"
+          APK="deploy-artifacts/Jasvi-Mobile-${VERSION}-PROD.apk"
+          SHA_FILE="$APK.sha256"
+          EXPECTED_SHA="$(awk 'NR==1 {print tolower($1)}' "$SHA_FILE")"
+          ACTUAL_SHA="$(sha256sum "$APK" | awk '{print tolower($1)}')"
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{64}$ ]] || { echo 'Invalid PROD checksum file.' >&2; exit 1; }
+          [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" ]] || { echo "PROD checksum mismatch: expected=$EXPECTED_SHA actual=$ACTUAL_SHA" >&2; exit 1; }
+          echo "EXPECTED_SHA=$EXPECTED_SHA" >> "$GITHUB_ENV"
+
+      - name: Verify PROD API health before deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          BODY="$(curl --fail --silent --show-error --max-time 20 "$PUBLIC_HEALTH_URL")"
+          python3 - "$BODY" <<'PY'
+          import json,sys
+          r=json.loads(sys.argv[1])
+          env=str(r.get('environment','')).upper()
+          if r.get('ready') is not True or env not in {'PROD','PRODUCTION'}:
+              raise SystemExit(f'Unexpected PROD health before deployment: {r}')
+          print('PRE_DEPLOY_PROD_HEALTH_OK')
+          PY
+
+      - name: Configure strict SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/dse_mobile_deploy_key
+          chmod 600 ~/.ssh/dse_mobile_deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Publish PROD APK to server
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/dse_mobile_deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=yes \
+            "$SSH_USER@$SSH_HOST" 'mkdir -p /tmp/dse-mobile-ci-deploy-prod'
+          scp -i ~/.ssh/dse_mobile_deploy_key -P "$SSH_PORT" -o StrictHostKeyChecking=yes \
+            "deploy-artifacts/Jasvi-Mobile-${VERSION}-PROD.apk" \
+            "deploy-artifacts/Jasvi-Mobile-${VERSION}-PROD.apk.sha256" \
+            scripts/mobile/deploy-mobile-apk.sh \
+            "$SSH_USER@$SSH_HOST:/tmp/dse-mobile-ci-deploy-prod/"
+          ssh -i ~/.ssh/dse_mobile_deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=yes \
+            "$SSH_USER@$SSH_HOST" \
+            "bash /tmp/dse-mobile-ci-deploy-prod/deploy-mobile-apk.sh prod /tmp/dse-mobile-ci-deploy-prod/Jasvi-Mobile-${VERSION}-PROD.apk /tmp/dse-mobile-ci-deploy-prod/Jasvi-Mobile-${VERSION}-PROD.apk.sha256 '${VERSION}'"
+
+      - name: Verify public PROD APK and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          PUBLIC_APK="$PUBLIC_BASE_URL/Jasvi-Mobile-${VERSION}-PROD.apk"
+          curl --fail --location --silent --show-error --max-time 120 "$PUBLIC_APK" -o published-prod.apk
+          ACTUAL_SHA="$(sha256sum published-prod.apk | awk '{print tolower($1)}')"
+          [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" ]] || { echo "Public PROD APK checksum mismatch: expected=$EXPECTED_SHA actual=$ACTUAL_SHA" >&2; exit 1; }
+          SHA_BODY="$(curl --fail --silent --show-error --max-time 20 "$PUBLIC_APK.sha256")"
+          PUBLISHED_SHA="$(printf '%s\n' "$SHA_BODY" | awk 'NR==1 {print tolower($1)}')"
+          [[ "$PUBLISHED_SHA" == "$EXPECTED_SHA" ]] || { echo "Public PROD checksum mismatch: expected=$EXPECTED_SHA published=$PUBLISHED_SHA" >&2; exit 1; }
+
+      - name: Verify PROD API health after deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          BODY="$(curl --fail --silent --show-error --max-time 20 "$PUBLIC_HEALTH_URL")"
+          python3 - "$BODY" <<'PY'
+          import json,sys
+          r=json.loads(sys.argv[1])
+          env=str(r.get('environment','')).upper()
+          if r.get('ready') is not True or env not in {'PROD','PRODUCTION'}:
+              raise SystemExit(f'Unexpected PROD health after deployment: {r}')
+          print('POST_DEPLOY_PROD_HEALTH_OK')
+          PY
+
+      - name: Promote GitHub release to stable
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease=false --title "Jasvi Mobile ${VERSION}"
           STABLE="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq '.isPrerelease')"
           [[ "$STABLE" == 'false' ]] || { echo "GitHub release $TAG was not promoted to stable." >&2; exit 1; }
 
-      - name: Production release summary
+      - name: Clean remote PROD staging
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f ~/.ssh/dse_mobile_deploy_key ]]; then
+            ssh -i ~/.ssh/dse_mobile_deploy_key -p "${SSH_PORT:-22}" -o StrictHostKeyChecking=yes \
+              "$SSH_USER@$SSH_HOST" 'rm -rf /tmp/dse-mobile-ci-deploy-prod' || true
+          fi
+
+      - name: PROD summary
+        if: success()
         shell: bash
         run: |
           {
-            echo '### Mobile production release approved'
+            echo '### Mobile PROD complete'
             echo "- Tag: $TAG"
             echo "- Version: $VERSION"
             echo "- Version code: $VERSION_CODE"
-            echo '- PROD APK was built only after explicit manual GitHub approval.'
-            echo '- Next: run Mobile PROD Server Deploy for the same stable tag after the one-time PROD server bootstrap has passed.'
+            echo "- SHA-256: $EXPECTED_SHA"
+            echo '- PROD APK was built from the UAT-approved tag after explicit production confirmation.'
+            echo '- Exact GitHub PROD assets were deployed and re-downloaded from the public PROD URL.'
+            echo '- PROD API health passed before and after deployment.'
+            echo '- GitHub release was promoted to stable only after server verification succeeded.'
           } >> "$GITHUB_STEP_SUMMARY"
