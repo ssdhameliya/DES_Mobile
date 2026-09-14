@@ -1,0 +1,10 @@
+--- a/mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/BankFinanceScreens.kt
++++ b/mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/BankFinanceScreens.kt
+@@ -174,6 +231,7 @@
+             if(canRecon&&bulkEligible(t))add(PremiumActionSpec(if(t.id in selectedIds)"Remove from Bulk Selection" else "Add to Bulk Selection",{if(t.id in selectedIds)selectedIds.remove(t.id)else selectedIds.add(t.id)}))
+         },{actionTarget=null})
+     }
++    linkedChoices?.let{(transaction,links)->LinkedAllocationsDialog(transaction,links,{linkedChoices=null}){a->linkedChoices=null;routeLinked(a.targetType,a.targetId,a.documentNo,a.financeEntryId,"Bank Statement #${transaction.id}")}}
+     if(batchFilterOpen)BankBatchFilterDialog(batchFilter,{batchFilterOpen=false}){batchFilter=it;batchPage=0;batch=null;batchFilterOpen=false}
+     if(txFilterOpen)BankTransactionFilterDialog(txFilter,{txFilterOpen=false}){txFilter=it;txPage=0;selectedIds.clear();txFilterOpen=false}
+     selected?.let{t->BankTransactionDialog(api,t,p,username,selectedMode,{selected=null;selectedMode=null}){msg=it;selected=null;selectedMode=null;refresh++}}
