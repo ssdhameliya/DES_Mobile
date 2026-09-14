@@ -1,4 +1,10 @@
-JASVI INDUSTRIES MOBILE 1.2.5 - ANDROID UAT / PROD
+JASVI INDUSTRIES MOBILE - ANDROID UAT / PROD
+
+RELEASE IDENTITY
+- Current mobile version is defined in androidApp/build.gradle.kts.
+- Certified Desktop/Server baseline is defined once in shared MobileBuildInfo.SERVER_BASELINE.
+- Pull-request validation fails if the Android version and shared mobile version do not match.
+- Current aligned release: Mobile 1.2.12 / build 132 with Desktop/Server 10.0.12.
 
 NORMAL INTELLIJ TESTING
 1. Open this PROJECT ROOT in IntelliJ IDEA.
