@@ -24,22 +24,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          patches=(
-            .github/release-1.2.10/App.kt.patch
-            .github/release-1.2.10/bank-01.patch
-            .github/release-1.2.10/bank-02.patch
-            .github/release-1.2.10/bank-03.patch
-            .github/release-1.2.10/bank-04.patch
-            .github/release-1.2.10/bank-05.patch
-            .github/release-1.2.10/bank-06.patch
-            .github/release-1.2.10/bank-07.patch
-            .github/release-1.2.10/bank-08.patch
-            .github/release-1.2.10/DocumentScreens.kt.patch
-            .github/release-1.2.10/ReturnScreens.kt.patch
-          )
-          for patch_file in "${patches[@]}"; do
-            patch -p1 --forward --batch < "$patch_file"
+          cp .github/release-1.2.10/bank-01.patch /tmp/bank-all.patch
+          for part in 02 03 04 05 06 07 08; do
+            tail -n +3 ".github/release-1.2.10/bank-${part}.patch" >> /tmp/bank-all.patch
           done
+          git apply --check .github/release-1.2.10/App.kt.patch
+          git apply .github/release-1.2.10/App.kt.patch
+          git apply --check /tmp/bank-all.patch
+          git apply /tmp/bank-all.patch
+          git apply --check .github/release-1.2.10/DocumentScreens.kt.patch
+          git apply .github/release-1.2.10/DocumentScreens.kt.patch
+          git apply --check .github/release-1.2.10/ReturnScreens.kt.patch
+          git apply .github/release-1.2.10/ReturnScreens.kt.patch
 
       - name: Verify Mobile source contract
         shell: bash
