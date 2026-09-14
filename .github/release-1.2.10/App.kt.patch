@@ -1,0 +1,60 @@
+--- a/mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/App.kt
++++ b/mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/App.kt
+@@ -33,7 +33,14 @@
+ enum class MoreDestination(val label:String){PURCHASE("Purchase"),QUOTATIONS("Quotations"),SALES_RETURNS("Sales Returns"),PURCHASE_RETURNS("Purchase Returns"),MASTERS("Master Data"),INVENTORY("Inventory"),PURCHASE_RECON("Purchase Reconciliation"),COMMUNICATIONS("Communication Center"),REMINDERS("Reminders"),NOTIFICATIONS("Notifications"),REPORTS("Reports"),PROFILE("Profile & Password"),ADMIN("User Access & Roles"),IMPORT("Data Import"),SYNC("Sync Center"),ABOUT("About")}
+ private enum class RootPage { STARTUP,LOGIN,MFA,APP }
+ 
+-data class RecordTarget(val moduleKey:String,val reference:String="",val recordId:Long?=null,val openActions:Boolean=false)
++data class RecordTarget(
++ val moduleKey:String,
++ val reference:String="",
++ val recordId:Long?=null,
++ val openActions:Boolean=false,
++ val action:LinkedRecordAction=LinkedRecordAction.VIEW,
++ val source:String="",
++)
+ 
+ data class PermissionContext(val user:UserPayload?,val permissions:List<EffectivePermission>){
+     private val admin:Boolean get()=user?.role.equals("ADMIN",true)
+@@ -363,7 +370,7 @@
+  PremiumAlertDialog(onDismissRequest=onClose,title={Text("Reset Password")},text={Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
+   if(challenge.isBlank()){
+    DseField("Username / email",identity,singleLine=true,required=true,onValue={identity=it})
+-   Text("Jasvi Industries 10.0.5 sends a verification code to the registered email.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
++   Text("Jasvi Industries 10.0.9 sends a verification code to the registered email.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+   } else {
+    DseField("Email Verification Code",otp,singleLine=true,required=true,onValue={otp=it})
+    DseField("Authenticator Code",totp,singleLine=true,supporting="Required when MFA is enrolled for this account",onValue={totp=it})
+@@ -411,7 +418,7 @@
+      DseField("Answer",captchaAnswer,singleLine=true,required=true,icon=Icons.Rounded.VerifiedUser,onValue={captchaAnswer=it})
+      TextButton(enabled=!busy,onClick={scope.launch{refreshCaptcha()}}){Icon(Icons.Rounded.Refresh,null);Spacer(Modifier.width(6.dp));Text("Refresh CAPTCHA")}
+     }}
+-    Text("Jasvi Industries 10.0.5 requires email verification, authenticator enrollment and administrator approval before first sign-in.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
++    Text("Jasvi Industries 10.0.9 requires email verification, authenticator enrollment and administrator approval before first sign-in.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    2->{
+     Text("Email verification",style=MaterialTheme.typography.titleMedium)
+@@ -485,6 +492,10 @@
+    else->{tab=MainTab.MORE;more=MoreDestination.MASTERS}
+   }
+  }
++ fun routeTarget(target:RecordTarget){
++  routeModule(target.moduleKey)
++  recordTarget=target
++ }
+  fun routeDeepLink(raw:String){
+   val withoutScheme=raw.substringAfter("://",raw).substringBefore('?').trim('/')
+   val parts=withoutScheme.split('/').filter{it.isNotBlank()}
+@@ -565,10 +576,10 @@
+     Row(Modifier.padding(horizontal=10.dp,vertical=7.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(7.dp)){Icon(Icons.Rounded.Info,null,Modifier.size(16.dp),tint=MaterialTheme.colorScheme.primary);Text(banner,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+    }
+    when(tab){
+-    MainTab.DASHBOARD->DashboardScreen(api,permission,{if(allowed(it))tab=it},{dest->tab=MainTab.MORE;more=dest},{globalSearch=true},{target->routeModule(target.moduleKey);recordTarget=target})
++    MainTab.DASHBOARD->DashboardScreen(api,permission,{if(allowed(it))tab=it},{dest->tab=MainTab.MORE;more=dest},{globalSearch=true},::routeTarget)
+     MainTab.SALES->if(permission.can("SALES"))SalesWorkspace(api,permission,permission.user?.username.orEmpty(),recordTarget,{recordTarget=null}) else PermissionDenied("Sales")
+     MainTab.PURCHASE->if(permission.can("PURCHASE"))PurchaseWorkspace(api,permission,permission.user?.username.orEmpty(),recordTarget,{recordTarget=null}) else PermissionDenied("Purchase")
+-    MainTab.BANK->if(allowed(MainTab.BANK))BankFinanceWorkspace(api,permission,permission.user?.username.orEmpty(),recordTarget,{recordTarget=null}) else PermissionDenied("Bank & Finance")
++    MainTab.BANK->if(allowed(MainTab.BANK))BankFinanceWorkspace(api,permission,permission.user?.username.orEmpty(),recordTarget,{recordTarget=null},::routeTarget) else PermissionDenied("Bank & Finance")
+     MainTab.IMPORT->if(allowed(MainTab.IMPORT))DataImportWorkspace(api,permission.user?.username.orEmpty()) else PermissionDenied("Data Import")
+     MainTab.MORE->MoreWorkspace(api,permission,permission.user?.username.orEmpty(),more,{more=it},{routeDeepLink(it)},recordTarget,{recordTarget=null})
+    }
