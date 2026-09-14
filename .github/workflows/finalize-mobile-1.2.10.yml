@@ -25,7 +25,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat .github/final-1.2.10/chunks/part-* > /tmp/final-files.tar.gz.b64
+          cat \
+            .github/final-1.2.10/chunks/part-00 \
+            .github/final-1.2.10/chunks/part-01 \
+            .github/final-1.2.10/chunks/part-02 \
+            .github/final-1.2.10/chunks/part-03 \
+            .github/final-1.2.10/chunks/part-04 \
+            .github/final-1.2.10/chunks/part-050 \
+            .github/final-1.2.10/chunks/part-051 \
+            .github/final-1.2.10/chunks/part-052 \
+            .github/final-1.2.10/chunks/part-060 \
+            .github/final-1.2.10/chunks/part-061 \
+            .github/final-1.2.10/chunks/part-062 \
+            .github/final-1.2.10/chunks/part-070.correct \
+            .github/final-1.2.10/chunks/part-071 \
+            .github/final-1.2.10/chunks/part-072.correct \
+            > /tmp/final-files.tar.gz.b64
           base64 --decode /tmp/final-files.tar.gz.b64 > /tmp/final-files.tar.gz
           echo 'a5b7dd2b62330fad6c57a901c9f2e34c7af4af2b1dc22e577aa7a15c07c0b5dc  /tmp/final-files.tar.gz' | sha256sum -c -
           tar -xzf /tmp/final-files.tar.gz
