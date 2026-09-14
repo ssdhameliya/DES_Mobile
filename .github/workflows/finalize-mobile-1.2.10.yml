@@ -1,0 +1,87 @@
+name: Finalize Mobile 1.2.10 clean source
+
+on:
+  push:
+    branches:
+      - tmp/mobile-1.2.10-finalize
+    paths:
+      - .github/workflows/finalize-mobile-1.2.10.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout staging branch
+        uses: actions/checkout@v6
+        with:
+          ref: tmp/mobile-1.2.10-finalize
+          fetch-depth: 0
+
+      - name: Reconstruct and verify exact source bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCHIVE=.github/final-1.2.10/final-files.tar.gz
+          echo 'a5b7dd2b62330fad6c57a901c9f2e34c7af4af2b1dc22e577aa7a15c07c0b5dc  '"$ARCHIVE" | sha256sum -c -
+          tar -xzf "$ARCHIVE"
+          cat > /tmp/expected.sha256 <<'EOF'
+          0a651d9141a9dc2e33c558fe292808d83fdf71ae5058bcd0c9d048ed5ab094a0  mobile-source/DSE-ERP-Mobile/androidApp/build.gradle.kts
+          5b785c923e3a4cdeea8cbf432a39deff2a6a3cecef50c4cc692cb8caab5b4189  mobile-source/DSE-ERP-Mobile/scripts/verify-android-source.py
+          45fcbe65290f28ff05b39bc6d9cf463a564716593251ee301eeeea694c2b32f1  mobile-source/DSE-ERP-Mobile/iosApp/Configuration/Config.xcconfig
+          fe68b27c44922f1d1850b3fcceaa32416c41128c540b1d6bffa3fd88138b0d89  mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/UiDialogState.kt
+          29a4bcacdeca5a8cf1045a2fb9be452a0434950c8f93141a65f98966ddee9bba  mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/ImportSyncScreens.kt
+          9a9279f90b5a1b0faa69ab7179fd96a3bda6731f0972ba0594b9fe4127861b12  mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/QuotationScreens.kt
+          1ce19d1c51a98b3ec29ab7120b2741aa91b5fc0d9c3d9cc09faa749bc9c261c9  mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/AuthenticationCoordinator.kt
+          9cf89c1e3acade8cee916713a6607389251063f314c819be49a0e2532c64d272  mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/MoreScreens.kt
+          1638849182abc84463d7aed0a50f5a378f2e0c4331afd55009085b513f3c9a00  mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/DseComponents.kt
+          3539ca8508facb7d36dad684c685e6a5c30055d97c9775564307fc1a63960759  mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/BankFinanceScreens.kt
+          ab81cacc445eeaaa5e95cb940483245b254b3ca9287ff68f951967f24f88510f  mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/DashboardScreens.kt
+          3c7470de2e9cb707b08708929e1487a4036633f6ede107e18dfcbb6d15a0aefb  mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/App.kt
+          2a43a1bc4586867be7b1b2aa9a553c3cdbd1d30bb7ca15fedc09e9309e053cd4  mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/ReturnScreens.kt
+          01b564df96539cd8e7a838371666169ff43782c7d7c32af2e09f6222f5d8582f  mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/DocumentScreens.kt
+          e9bf58ee4da3e26cda36f773ce5f4976845c8ca8af5ddc7b9bc581e4f289a205  mobile-source/DSE-ERP-Mobile/shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt
+          95aeaaaa8dbcf8af44642472e5243574c3d650608164d0516f375d3ede65c21b  mobile-source/DSE-ERP-Mobile/shared/src/commonMain/kotlin/org/dse/mobile/core/model/DesktopLinkage.kt
+          276316d5fd4c3215a80dfbf116f242aeb5646d38504d6c42edbf018734a785f6  mobile-source/DSE-ERP-Mobile/shared/src/commonTest/kotlin/org/dse/mobile/core/DesktopLinkageContractTest.kt
+          0acf8b7c162ed9bf488f763f2d1677923e81d16fe4ec8a9e1d2e129f1a154766  mobile-source/DSE-ERP-Mobile/shared/src/commonTest/kotlin/org/dse/mobile/core/MobilePhaseContractTest.kt
+          EOF
+          sed -i 's/^          //' /tmp/expected.sha256
+          sha256sum -c /tmp/expected.sha256
+
+      - name: Run release source contract
+        working-directory: mobile-source/DSE-ERP-Mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/verify-android-source.py
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      - name: Compile shared contracts and Compose JVM source
+        working-directory: mobile-source/DSE-ERP-Mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :shared:jvmTest :composeApp:compileKotlinJvm --console=plain
+
+      - name: Commit clean verified source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/final-1.2.10/final-files.tar.gz
+          git rm .github/workflows/finalize-mobile-1.2.10.yml
+          git add mobile-source/DSE-ERP-Mobile
+          git diff --cached --check
+          git commit -m 'Finalize Mobile 1.2.10: Desktop 10.0.9 parity, centralized dialogs and auth'
+          git push origin HEAD:tmp/mobile-1.2.10-finalize
