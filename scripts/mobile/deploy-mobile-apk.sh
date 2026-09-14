@@ -43,25 +43,23 @@ sudo -n install -d -o dseerp -g dseerp -m 0755 "$DEST_DIR"
 sudo -n install -o dseerp -g dseerp -m 0644 "$APK" "$DEST_APK"
 sudo -n install -o dseerp -g dseerp -m 0644 "$TMP_SHA" "$DEST_SHA"
 
-# The one-time UAT bootstrap installs a persistent SELinux fcontext mapping for
-# this directory. Newly installed APK/checksum files must receive that mapping.
+# The one-time environment bootstrap installs a persistent SELinux fcontext
+# mapping for the mobile static directory. Newly installed files must receive it.
 SELINUX_MODE="$(getenforce 2>/dev/null || echo Disabled)"
 if [[ "$SELINUX_MODE" != "Disabled" ]]; then
   sudo -n restorecon -RF "$DEST_DIR"
-  if [[ "$ENVIRONMENT" == "uat" ]]; then
-    APK_LABEL="$(sudo -n ls -Z "$DEST_APK")"
-    SHA_LABEL="$(sudo -n ls -Z "$DEST_SHA")"
-    echo "SELinux APK label: $APK_LABEL"
-    echo "SELinux checksum label: $SHA_LABEL"
-    grep -q ':httpd_sys_content_t:' <<<"$APK_LABEL" || {
-      echo "UAT APK is not labeled httpd_sys_content_t; run the UAT Caddy bootstrap first." >&2
-      exit 1
-    }
-    grep -q ':httpd_sys_content_t:' <<<"$SHA_LABEL" || {
-      echo "UAT checksum is not labeled httpd_sys_content_t; run the UAT Caddy bootstrap first." >&2
-      exit 1
-    }
-  fi
+  APK_LABEL="$(sudo -n ls -Z "$DEST_APK")"
+  SHA_LABEL="$(sudo -n ls -Z "$DEST_SHA")"
+  echo "SELinux APK label: $APK_LABEL"
+  echo "SELinux checksum label: $SHA_LABEL"
+  grep -q ':httpd_sys_content_t:' <<<"$APK_LABEL" || {
+    echo "$CHANNEL APK is not labeled httpd_sys_content_t; run the ${CHANNEL} Caddy bootstrap first." >&2
+    exit 1
+  }
+  grep -q ':httpd_sys_content_t:' <<<"$SHA_LABEL" || {
+    echo "$CHANNEL checksum is not labeled httpd_sys_content_t; run the ${CHANNEL} Caddy bootstrap first." >&2
+    exit 1
+  }
 fi
 
 INSTALLED_SHA=$(sudo -n sha256sum "$DEST_APK" | awk '{print tolower($1)}')
