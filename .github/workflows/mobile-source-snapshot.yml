@@ -2,8 +2,10 @@ name: Mobile Source Snapshot
 
 on:
   push:
-    branches:
-      - fix/mobile-1.2.9-auth-bank-salesperson
+    branches: [main]
+    paths:
+      - 'mobile-source/DSE-ERP-Mobile/**'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -11,13 +13,15 @@ permissions:
 jobs:
   snapshot:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-      - name: Upload mobile IntelliJ source snapshot
-        uses: actions/upload-artifact@v4
+      - name: Checkout exact source
+        uses: actions/checkout@v6
+      - name: Upload clean IntelliJ source snapshot
+        uses: actions/upload-artifact@v7
         with:
-          name: DSE-ERP-Mobile-source
+          name: Jasvi-Mobile-IntelliJ-${{ github.sha }}
           path: mobile-source/DSE-ERP-Mobile
           include-hidden-files: true
-          retention-days: 1
+          if-no-files-found: error
+          retention-days: 30

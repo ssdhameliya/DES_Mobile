@@ -190,6 +190,7 @@ private fun SalesDocumentCard(record:SaleRecord,onActions:()->Unit,onClick:()->U
     actionTarget?.let{r->
         val state=r.documentStatus.orEmpty().trim().uppercase()
         val active=state !in setOf("CANCELLED","DELETED")
+        val documentOutputAllowed=canonicalBusinessDocumentAllowed(state)
         val approvalLocked=state in setOf("PENDING APPROVAL","REJECTED")
         val outstanding=(r.totalAmount-r.paidAmount).coerceAtLeast(0.0)
         val paymentState=r.paymentStatus.orEmpty().trim().uppercase()
@@ -205,9 +206,9 @@ private fun SalesDocumentCard(record:SaleRecord,onActions:()->Unit,onClick:()->U
             if(p.can("SALES","EDIT"))add(PremiumActionSpec("View / Record Payments",{loadFull(r){payment=it}},enabled=canPay,disabledReason=when{approvalLocked->"Approval must be completed before payment.";outstanding<=0.005->"This Sale is already fully paid.";!active->"Cancelled or deleted Sales cannot receive payment.";else->null}))
             if(p.can("SALES","EDIT"))add(PremiumActionSpec("Create Sales Return",{loadFull(r){returning=it}},enabled=canReturn,disabledReason=when{state!="APPROVED"->"Only approved Sales can be returned.";!fullyPaid->"The Sale must be fully paid before creating a return.";else->"A return is already pending or partial."}))
             if(p.can("SALES","VIEW")){
-                add(PremiumActionSpec("Share PDF",{scope.launch{msg=shareCanonicalDocument(api,"SALES_INVOICE",r.invoiceNo,"PDF")}},enabled=active&&!approvalLocked,disabledReason="Document output is available after approval."))
-                add(PremiumActionSpec("Excel",{scope.launch{msg=shareCanonicalDocument(api,"SALES_INVOICE",r.invoiceNo,"XLSX")}},enabled=active&&!approvalLocked,disabledReason="Document output is available after approval."))
-                add(PremiumActionSpec("Send Email",{loadFull(r){email=it}},enabled=active&&!approvalLocked,disabledReason="Email is available after approval."))
+                add(PremiumActionSpec("Share PDF",{scope.launch{msg=shareCanonicalDocument(api,"SALES_INVOICE",r.invoiceNo,"PDF")}},enabled=documentOutputAllowed,disabledReason=if(!documentOutputAllowed)"Cancelled or deleted Sales cannot be shared." else null))
+                add(PremiumActionSpec("Excel",{scope.launch{msg=shareCanonicalDocument(api,"SALES_INVOICE",r.invoiceNo,"XLSX")}},enabled=documentOutputAllowed,disabledReason=if(!documentOutputAllowed)"Cancelled or deleted Sales cannot be exported." else null))
+                add(PremiumActionSpec("Send Email",{loadFull(r){email=it}},enabled=documentOutputAllowed,disabledReason=if(!documentOutputAllowed)"Cancelled or deleted Sales cannot be emailed." else null))
                 val hasPhone=!r.customer?.phone.isNullOrBlank()
                 add(PremiumActionSpec("WhatsApp",{
                     loadFull(r){full->val phone=full.customer?.phone.orEmpty().filter{it.isDigit()||it=='+'};if(phone.isBlank())msg="Customer phone is not configured" else {platformOpenExternalUrl("https://wa.me/${phone.filter{it.isDigit()}}?text=${urlEncode("Jasvi Industries Sale ${full.invoiceNo} • ${money(full.totalAmount)}")}");scope.launch{full.id?.let{api.markDocumentWhatsapp("SALE",it)}}}}
@@ -320,6 +321,7 @@ private fun SalesDocumentCard(record:SaleRecord,onActions:()->Unit,onClick:()->U
     actionTarget?.let{r->
         val state=r.documentStatus.orEmpty().trim().uppercase()
         val active=state !in setOf("CANCELLED","DELETED")
+        val documentOutputAllowed=canonicalBusinessDocumentAllowed(state)
         val approvalLocked=state in setOf("PENDING APPROVAL","REJECTED")
         val outstanding=(r.totalAmount-r.paidAmount).coerceAtLeast(0.0)
         val paymentState=r.paymentStatus.orEmpty().trim().uppercase()
@@ -335,9 +337,9 @@ private fun SalesDocumentCard(record:SaleRecord,onActions:()->Unit,onClick:()->U
             if(p.can("PURCHASE","EDIT"))add(PremiumActionSpec("View / Record Payments",{loadFull(r){payment=it}},enabled=canPay,disabledReason=when{state=="DRAFT"->"Draft Purchases cannot receive payment.";approvalLocked->"Approval must be completed before payment.";outstanding<=0.005->"This Purchase is already fully paid.";!active->"Cancelled or deleted Purchases cannot receive payment.";else->null}))
             if(p.can("PURCHASE","EDIT"))add(PremiumActionSpec("Create Purchase Return",{loadFull(r){returning=it}},enabled=canReturn,disabledReason=when{state!="APPROVED"->"Only approved Purchases can be returned.";!fullyPaid->"The Purchase must be fully paid before creating a return.";else->"A return is already pending or partial."}))
             if(p.can("PURCHASE","VIEW")){
-                add(PremiumActionSpec("Share PDF",{scope.launch{msg=shareCanonicalDocument(api,"PURCHASE_INVOICE",r.invoiceNo,"PDF")}},enabled=active&&!approvalLocked,disabledReason="Document output is available after approval."))
-                add(PremiumActionSpec("Excel",{scope.launch{msg=shareCanonicalDocument(api,"PURCHASE_INVOICE",r.invoiceNo,"XLSX")}},enabled=active&&!approvalLocked,disabledReason="Document output is available after approval."))
-                add(PremiumActionSpec("Send Email",{loadFull(r){email=it}},enabled=active&&!approvalLocked,disabledReason="Email is available after approval."))
+                add(PremiumActionSpec("Share PDF",{scope.launch{msg=shareCanonicalDocument(api,"PURCHASE_INVOICE",r.invoiceNo,"PDF")}},enabled=documentOutputAllowed,disabledReason=if(!documentOutputAllowed)"Cancelled or deleted Purchases cannot be shared." else null))
+                add(PremiumActionSpec("Excel",{scope.launch{msg=shareCanonicalDocument(api,"PURCHASE_INVOICE",r.invoiceNo,"XLSX")}},enabled=documentOutputAllowed,disabledReason=if(!documentOutputAllowed)"Cancelled or deleted Purchases cannot be exported." else null))
+                add(PremiumActionSpec("Send Email",{loadFull(r){email=it}},enabled=documentOutputAllowed,disabledReason=if(!documentOutputAllowed)"Cancelled or deleted Purchases cannot be emailed." else null))
                 val hasPhone=!r.supplier?.phone.isNullOrBlank()
                 add(PremiumActionSpec("WhatsApp",{loadFull(r){full->val phone=full.supplier?.phone.orEmpty().filter{it.isDigit()||it=='+'};if(phone.isBlank())msg="Supplier phone is not configured" else platformOpenExternalUrl("https://wa.me/${phone.filter{it.isDigit()}}?text=${urlEncode("Jasvi Industries Purchase ${full.invoiceNo} • ${money(full.totalAmount,full.currency?.substringBefore(' ')?:"INR")}")}")}},enabled=active&&!approvalLocked&&hasPhone,disabledReason=if(!hasPhone)"Supplier phone is not configured." else "WhatsApp is available after approval."))
             }
@@ -397,6 +399,7 @@ private fun SaleDetailDialog(
 ){
     val state=r.documentStatus.orEmpty().trim().uppercase()
     val active=state !in setOf("CANCELLED","DELETED")
+    val documentOutputAllowed=canonicalBusinessDocumentAllowed(state)
     val approvalLocked=state in setOf("PENDING APPROVAL","REJECTED")
     val outstanding=(r.totalAmount-r.paidAmount).coerceAtLeast(0.0)
     val paymentState=r.paymentStatus.orEmpty().trim().uppercase()
@@ -426,7 +429,7 @@ private fun SaleDetailDialog(
                 if(canEdit)add(PremiumActionSpec("Edit",onEdit))
                 if(canPay)add(PremiumActionSpec("Record Payment",onPayment))
                 if(canReturn)add(PremiumActionSpec("Create Sales Return",onReturn))
-                if(active&&!approvalLocked&&p.can("SALES","VIEW")){add(PremiumActionSpec("Share PDF",onPdf,icon=Icons.Rounded.PictureAsPdf));add(PremiumActionSpec("Excel",onExcel,icon=Icons.Rounded.TableChart));add(PremiumActionSpec("Email",onEmail));add(PremiumActionSpec("WhatsApp",onWhatsApp))}
+                if(documentOutputAllowed&&p.can("SALES","VIEW")){add(PremiumActionSpec("Share PDF",onPdf,icon=Icons.Rounded.PictureAsPdf));add(PremiumActionSpec("Excel",onExcel,icon=Icons.Rounded.TableChart));add(PremiumActionSpec("Email",onEmail));if(!approvalLocked)add(PremiumActionSpec("WhatsApp",onWhatsApp))}
                 if(p.can("SALES","CREATE"))add(PremiumActionSpec("Duplicate",onDuplicate))
                 if(state=="PENDING APPROVAL"&&p.isAdmin()){add(PremiumActionSpec("Approve",onApprove));add(PremiumActionSpec("Reject",onReject,destructive=true))}
                 if(active&&!financiallyLocked&&p.can("SALES","EDIT"))add(PremiumActionSpec("Cancel",onCancel,destructive=true))
@@ -457,6 +460,7 @@ private fun PurchaseDetailDialog(
 ){
     val state=r.documentStatus.orEmpty().trim().uppercase()
     val active=state !in setOf("CANCELLED","DELETED")
+    val documentOutputAllowed=canonicalBusinessDocumentAllowed(state)
     val approvalLocked=state in setOf("PENDING APPROVAL","REJECTED")
     val outstanding=(r.totalAmount-r.paidAmount).coerceAtLeast(0.0)
     val paymentState=r.paymentStatus.orEmpty().trim().uppercase()
@@ -486,7 +490,7 @@ private fun PurchaseDetailDialog(
                 if(canEdit)add(PremiumActionSpec("Edit",onEdit))
                 if(canPay)add(PremiumActionSpec("Record Payment",onPayment))
                 if(canReturn)add(PremiumActionSpec("Create Purchase Return",onReturn))
-                if(active&&!approvalLocked&&p.can("PURCHASE","VIEW")){add(PremiumActionSpec("Share PDF",onPdf,icon=Icons.Rounded.PictureAsPdf));add(PremiumActionSpec("Excel",onExcel,icon=Icons.Rounded.TableChart));add(PremiumActionSpec("Email",onEmail));add(PremiumActionSpec("WhatsApp",onWhatsApp))}
+                if(documentOutputAllowed&&p.can("PURCHASE","VIEW")){add(PremiumActionSpec("Share PDF",onPdf,icon=Icons.Rounded.PictureAsPdf));add(PremiumActionSpec("Excel",onExcel,icon=Icons.Rounded.TableChart));add(PremiumActionSpec("Email",onEmail));if(!approvalLocked)add(PremiumActionSpec("WhatsApp",onWhatsApp))}
                 if(p.can("PURCHASE","CREATE"))add(PremiumActionSpec("Duplicate",onDuplicate))
                 if(state=="PENDING APPROVAL"&&p.isAdmin()){add(PremiumActionSpec("Approve",onApprove));add(PremiumActionSpec("Reject",onReject,destructive=true))}
                 if(active&&!financiallyLocked&&p.can("PURCHASE","EDIT"))add(PremiumActionSpec("Cancel",onCancel,destructive=true))

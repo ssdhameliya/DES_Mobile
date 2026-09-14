@@ -22,9 +22,10 @@ fun evaluateMobileCompatibility(
     clientType: String,
     currentVersion: String = MobileBuildInfo.MOBILE_VERSION_NAME,
 ): MobileCompatibilityDecision {
-    val ios = clientType.equals("iOS", ignoreCase = true)
-    val minimum = (if (ios) status.minimumSupportedIosVersion else status.minimumSupportedAndroidVersion).trim()
-    val latest = (if (ios) status.latestIosVersion else status.latestAndroidVersion).trim()
+    // Mobile 1.2.11 is Android-only. Keep clientType in the public signature for source compatibility,
+    // but intentionally evaluate only the environment-owned Android policy.
+    val minimum = status.minimumSupportedAndroidVersion.trim()
+    val latest = status.latestAndroidVersion.trim()
 
     // 10.0.1/10.0.2 servers predate the server-owned mobile policy. Keep them usable
     // while API revision v5 is still accepted by the app.

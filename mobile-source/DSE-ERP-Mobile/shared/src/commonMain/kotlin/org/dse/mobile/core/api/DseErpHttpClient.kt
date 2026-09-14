@@ -11,6 +11,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.CancellationException
 import org.dse.mobile.core.model.*
 import org.dse.mobile.core.offline.OfflineRepository
 import org.dse.mobile.core.security.MobileSecurityPolicy
@@ -340,9 +341,9 @@ class DseErpHttpClient(
 
     private suspend fun getBytes(path:String,authenticated:Boolean=true,configure:HttpRequestBuilder.()->Unit={}):ApiResult<ByteArray>{
         endpointProblem?.let{return ApiResult.UnsafeEndpoint(it)}
-        val response=try{client.get(url(path)){applyAuthentication(authenticated);configure()}}catch(e:Exception){return ApiResult.NetworkError(e.message?:"Network error",false)}
+        val response=try{client.get(url(path)){applyAuthentication(authenticated);configure()}}catch(e:CancellationException){throw e}catch(e:Exception){return ApiResult.NetworkError(e.message?:"Network error",false)}
         return when(response.status.value){
-            in 200..299->try{ApiResult.Success(response.body<ByteArray>())}catch(e:Exception){ApiResult.DecodeError(e.message?:"Unable to read attachment",response.status.value)}
+            in 200..299->try{ApiResult.Success(response.body<ByteArray>())}catch(e:CancellationException){throw e}catch(e:Exception){ApiResult.DecodeError(e.message?:"Unable to read attachment",response.status.value)}
             401->ApiResult.Unauthorized(response.safeMessage())
             403->ApiResult.Forbidden(response.safeMessage())
             404->ApiResult.NotFound(response.safeMessage())
@@ -353,7 +354,7 @@ class DseErpHttpClient(
 
     private suspend fun deleteNoBody(path:String):ApiResult<OperationResponse>{
         endpointProblem?.let{return ApiResult.UnsafeEndpoint(it)}
-        val response=try{client.delete(url(path)){applyAuthentication(true)}}catch(e:Exception){return ApiResult.NetworkError(e.message?:"Network error",true)}
+        val response=try{client.delete(url(path)){applyAuthentication(true)}}catch(e:CancellationException){throw e}catch(e:Exception){return ApiResult.NetworkError(e.message?:"Network error",true)}
         return when(response.status.value){
             in 200..299->ApiResult.Success(OperationResponse(true,"Deleted"))
             401->ApiResult.Unauthorized(response.safeMessage())
@@ -366,9 +367,9 @@ class DseErpHttpClient(
 
     private suspend inline fun <reified T> execute(writeOperation:Boolean,request:suspend()->HttpResponse):ApiResult<T>{
         endpointProblem?.let{return ApiResult.UnsafeEndpoint(it)}
-        val response=try{request()}catch(e:Exception){return ApiResult.NetworkError(e.message?:"Network error",requestMayHaveReachedServer=writeOperation)}
+        val response=try{request()}catch(e:CancellationException){throw e}catch(e:Exception){return ApiResult.NetworkError(e.message?:"Network error",requestMayHaveReachedServer=writeOperation)}
         return when(response.status.value){
-            in 200..299->try{ApiResult.Success(response.body<T>())}catch(e:Exception){ApiResult.DecodeError(e.message?:"Unable to decode server response",response.status.value)}
+            in 200..299->try{ApiResult.Success(response.body<T>())}catch(e:CancellationException){throw e}catch(e:Exception){ApiResult.DecodeError(e.message?:"Unable to decode server response",response.status.value)}
             401->ApiResult.Unauthorized(response.safeMessage())
             403->ApiResult.Forbidden(response.safeMessage())
             404->ApiResult.NotFound(response.safeMessage())

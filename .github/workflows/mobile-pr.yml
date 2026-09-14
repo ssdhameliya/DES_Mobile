@@ -1,0 +1,40 @@
+name: Mobile PR Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'mobile-source/DSE-ERP-Mobile/**'
+      - '.github/workflows/mobile-*.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android SDK packages
+        run: sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Verify Android/mobile source contracts
+        working-directory: mobile-source/DSE-ERP-Mobile
+        run: python3 scripts/verify-android-source.py
+      - name: Run shared contracts and Compose JVM compile
+        working-directory: mobile-source/DSE-ERP-Mobile
+        run: |
+          chmod +x gradlew
+          ./gradlew :shared:jvmTest :composeApp:compileKotlinJvm --console=plain
