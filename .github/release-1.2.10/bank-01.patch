@@ -1,0 +1,40 @@
+--- a/mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/BankFinanceScreens.kt
++++ b/mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/BankFinanceScreens.kt
+@@ -22,24 +22,33 @@
+ private enum class BankMode(val label:String){FINANCE("Bank & Expense"),STATEMENT("Bank Statement")}
+ 
+ @Composable
+-internal fun BankFinanceWorkspace(api:DseErpHttpClient,p:PermissionContext,username:String,openTarget:RecordTarget?=null,onTargetConsumed:()->Unit={}){
++internal fun BankFinanceWorkspace(api:DseErpHttpClient,p:PermissionContext,username:String,openTarget:RecordTarget?=null,onTargetConsumed:()->Unit={},onRecordTarget:(RecordTarget)->Unit={}){
+     var mode by remember{mutableStateOf(BankMode.STATEMENT)}
+     Column(Modifier.fillMaxSize()){
+         SingleChoiceSegmentedButtonRow(Modifier.padding(horizontal=12.dp,vertical=6.dp)){BankMode.entries.forEachIndexed{i,m->SegmentedButton(selected=mode==m,onClick={mode=m},shape=SegmentedButtonDefaults.itemShape(i,BankMode.entries.size)){Text(m.label)}}}
+         LaunchedEffect(openTarget?.moduleKey){if(openTarget?.moduleKey?.uppercase()=="BANK_STATEMENT")mode=BankMode.STATEMENT else if(openTarget?.moduleKey?.uppercase() in setOf("FINANCE","BANK","EXPENSE"))mode=BankMode.FINANCE}
+         Box(Modifier.fillMaxWidth().weight(1f)){
+-            when(mode){BankMode.FINANCE->FinanceRegister(api,p,openTarget,onTargetConsumed);BankMode.STATEMENT->BankStatementWorkspace(api,p,username)}
++            when(mode){BankMode.FINANCE->FinanceRegister(api,p,openTarget,onTargetConsumed,onRecordTarget);BankMode.STATEMENT->BankStatementWorkspace(api,p,username,openTarget,onTargetConsumed,onRecordTarget)}
+         }
+     }
+ }
+ 
+ @Composable
+-private fun FinanceRegister(api:DseErpHttpClient,p:PermissionContext,openTarget:RecordTarget?=null,onTargetConsumed:()->Unit={}){
++private fun FinanceRegister(api:DseErpHttpClient,p:PermissionContext,openTarget:RecordTarget?=null,onTargetConsumed:()->Unit={},onRecordTarget:(RecordTarget)->Unit={}){
+     var page by remember{mutableIntStateOf(0)};var filter by remember{mutableStateOf(FinanceFilter())};var data by remember{mutableStateOf<FinancePage?>(null)};var metrics by remember{mutableStateOf<FinanceMetrics?>(null)};var msg by remember{mutableStateOf("")};var refresh by remember{mutableIntStateOf(0)};var selected by remember{mutableStateOf<FinanceRecord?>(null)};var editor by remember{mutableStateOf<FinanceRecord?>(null)};var creating by remember{mutableStateOf(false)};var confirm by remember{mutableStateOf<FinanceRecord?>(null)};var actionTarget by remember{mutableStateOf<FinanceRecord?>(null)};var filterOpen by remember{mutableStateOf(false)};val scope=rememberCoroutineScope()
++    fun openLinkedErp(row:FinanceRecord){
++        val resolution=resolveDesktopLinkedTarget(DesktopLinkSource.FINANCE_ENTRY,row.linkedTargetType,row.linkedTargetId,row.linkedDocumentNo,sourceLabel="Bank / Expense")
++        resolution.target?.let{onRecordTarget(it.toRecordTarget())} ?: run{msg="Linked record unavailable. ${resolution.warning.orEmpty()}"}
++    }
++    fun openBankStatement(row:FinanceRecord){
++        val id=row.statementTransactionId
++        if(id==null)msg="Linked record unavailable. No Bank Statement transaction is linked to this entry."
++        else onRecordTarget(RecordTarget("BANK_STATEMENT",row.referenceNo.orEmpty(),id,action=LinkedRecordAction.VIEW,source=if(row.voucherType.contains("EXPENSE",true))"Expense Entry" else "Bank Entry"))
++    }
+     fun loadFull(row:FinanceRecord,after:(FinanceRecord)->Unit){scope.launch{val id=row.id?:return@launch;when(val r=api.financeById(id)){is ApiResult.Success->after(r.value);else->msg=r.readableMessage()}}}
+     suspend fun save(rec:FinanceRecord,create:Boolean){
+         when(val h=api.health()){
+-            is ApiResult.NetworkError->{if(create){msg="ERP is offline. New Finance entries are not queued automatically because v10.0.5 has no idempotency key. Reconnect and press Save again."}else{OfflineRepository.enqueueFinance(rec,false);msg="Pending Local Sync — this row-versioned Finance update was not sent because ERP is offline.";editor=null}}
++            is ApiResult.NetworkError->{if(create){msg="ERP is offline. New Finance entries are not queued automatically because the current ERP API does not expose an idempotency key for this create operation. Reconnect and press Save again."}else{OfflineRepository.enqueueFinance(rec,false);msg="Pending Local Sync — this row-versioned Finance update was not sent because ERP is offline.";editor=null}}
+             is ApiResult.Success->{val r=if(create)api.createFinance(rec)else api.updateFinance(rec);when(r){is ApiResult.Success->{msg=if(create)"Created ${r.value.voucherNo}" else "Finance entry updated";creating=false;editor=null;refresh++};else->msg=r.readableMessage()}}
+             else->msg=h.readableMessage()
+         }
