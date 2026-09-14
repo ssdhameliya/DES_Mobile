@@ -44,6 +44,8 @@ jobs:
           base64 --decode /tmp/final-files.tar.gz.b64 > /tmp/final-files.tar.gz
           echo 'a5b7dd2b62330fad6c57a901c9f2e34c7af4af2b1dc22e577aa7a15c07c0b5dc  /tmp/final-files.tar.gz' | sha256sum -c -
           tar -xzf /tmp/final-files.tar.gz
+          git apply --check .github/final-1.2.10/confirm-dialog-compile.patch
+          git apply .github/final-1.2.10/confirm-dialog-compile.patch
           cat > /tmp/expected.sha256 <<'EOF'
           0a651d9141a9dc2e33c558fe292808d83fdf71ae5058bcd0c9d048ed5ab094a0  mobile-source/DSE-ERP-Mobile/androidApp/build.gradle.kts
           5b785c923e3a4cdeea8cbf432a39deff2a6a3cecef50c4cc692cb8caab5b4189  mobile-source/DSE-ERP-Mobile/scripts/verify-android-source.py
@@ -53,7 +55,7 @@ jobs:
           9a9279f90b5a1b0faa69ab7179fd96a3bda6731f0972ba0594b9fe4127861b12  mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/QuotationScreens.kt
           1ce19d1c51a98b3ec29ab7120b2741aa91b5fc0d9c3d9cc09faa749bc9c261c9  mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/AuthenticationCoordinator.kt
           9cf89c1e3acade8cee916713a6607389251063f314c819be49a0e2532c64d272  mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/MoreScreens.kt
-          1638849182abc84463d7aed0a50f5a378f2e0c4331afd55009085b513f3c9a00  mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/DseComponents.kt
+          ecf968864d24d9d92fe6f5885d52959e1e30cbc9c25934450d76fa986105e5cf  mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/DseComponents.kt
           3539ca8508facb7d36dad684c685e6a5c30055d97c9775564307fc1a63960759  mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/BankFinanceScreens.kt
           ab81cacc445eeaaa5e95cb940483245b254b3ca9287ff68f951967f24f88510f  mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/DashboardScreens.kt
           3c7470de2e9cb707b08708929e1487a4036633f6ede107e18dfcbb6d15a0aefb  mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/App.kt
