@@ -80,7 +80,7 @@ checks={
  'AGP app plugin': 'com.android.application' in (root/'build.gradle.kts').read_text(),
  'KMP Android plugin': 'com.android.kotlin.multiplatform.library' in (root/'build.gradle.kts').read_text(),
  '10.0.7 baseline': 'SERVER_BASELINE = "10.0.7"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
- 'mobile 1.2.5': 'MOBILE_VERSION_NAME = "1.2.5"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
+ 'mobile 1.2.8': 'MOBILE_VERSION_NAME = "1.2.8"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
  'server-driven mobile policy': (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileCompatibility.kt').is_file(),
  '10.0.1 runtime floor': 'MINIMUM_COMPATIBLE_SERVER_VERSION = "10.0.1"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
  'API revision bearer v5': 'EXPECTED_API_REVISION = "spring-security-bearer-v5"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),

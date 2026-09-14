@@ -118,11 +118,11 @@ private fun SalesDocumentCard(record:SaleRecord,onActions:()->Unit,onClick:()->U
         }
     }
 
-    LaunchedEffect(openTarget?.moduleKey,openTarget?.reference,openTarget?.recordId){
+    LaunchedEffect(openTarget?.moduleKey,openTarget?.reference,openTarget?.recordId,openTarget?.openActions){
         val t=openTarget
         if(t!=null&&t.moduleKey.uppercase() in setOf("SALE","SALES")){
             if(t.reference=="__CREATE__"){creating=true;onTargetConsumed()}
-            else if(t.reference.isNotBlank())when(val r=api.saleByInvoice(t.reference)){is ApiResult.Success->{selected=r.value;onTargetConsumed()};else->{msg=r.readableMessage();onTargetConsumed()}}
+            else if(t.reference.isNotBlank())when(val r=api.saleByInvoice(t.reference)){is ApiResult.Success->{if(t.openActions)actionTarget=r.value else selected=r.value;onTargetConsumed()};else->{msg=r.readableMessage();onTargetConsumed()}}
         }
     }
     LaunchedEffect(api,refresh){savedViews=(api.savedViews("SALES_REGISTER",p.user?.id) as? ApiResult.Success)?.value.orEmpty()}
@@ -168,16 +168,12 @@ private fun SalesDocumentCard(record:SaleRecord,onActions:()->Unit,onClick:()->U
             DseEmptyRegisterState("No sales records match this view","Change the search or filters, then refresh.",Icons.Rounded.ReceiptLong)
         }
         data?.rows?.forEach{r->
-            val outstanding=(r.totalAmount-r.paidAmount).coerceAtLeast(0.0)
             SwipeActionContainer(
                 startActions=buildList{
                     add(SwipeAction("Open",Icons.Rounded.Visibility){loadFull(r){selected=it}})
                     if(p.can("SALES","EDIT"))add(SwipeAction("Edit",Icons.Rounded.Edit){loadFull(r){editor=it}})
                 },
-                endActions=buildList{
-                    if(outstanding>0.005&&p.can("SALES","EDIT"))add(SwipeAction("Pay",Icons.Rounded.Payments){loadFull(r){payment=it}})
-                    add(SwipeAction("PDF",Icons.Rounded.PictureAsPdf){scope.launch{msg=shareCanonicalDocument(api,"SALES_INVOICE",r.invoiceNo,"PDF")}})
-                },
+                endActions=listOf(SwipeAction("Actions",Icons.Rounded.MoreHoriz){actionTarget=r}),
             ){SalesDocumentCard(r,{actionTarget=r}){loadFull(r){selected=it}}}
         }
     }
@@ -264,7 +260,7 @@ private fun SalesDocumentCard(record:SaleRecord,onActions:()->Unit,onClick:()->U
             else->msg=health.readableMessage()
         }
     }
-    LaunchedEffect(openTarget?.moduleKey,openTarget?.reference,openTarget?.recordId){val t=openTarget;if(t!=null&&t.moduleKey.uppercase() in setOf("PURCHASE","PURCHASES")){if(t.reference=="__CREATE__"){creating=true;onTargetConsumed()}else if(t.reference.isNotBlank()){when(val r=api.purchaseByInvoice(t.reference)){is ApiResult.Success->{selected=r.value;onTargetConsumed()};else->{msg=r.readableMessage();onTargetConsumed()}}}}}
+    LaunchedEffect(openTarget?.moduleKey,openTarget?.reference,openTarget?.recordId,openTarget?.openActions){val t=openTarget;if(t!=null&&t.moduleKey.uppercase() in setOf("PURCHASE","PURCHASES")){if(t.reference=="__CREATE__"){creating=true;onTargetConsumed()}else if(t.reference.isNotBlank()){when(val r=api.purchaseByInvoice(t.reference)){is ApiResult.Success->{if(t.openActions)actionTarget=r.value else selected=r.value;onTargetConsumed()};else->{msg=r.readableMessage();onTargetConsumed()}}}}}
     LaunchedEffect(api,page,filter,refresh){when(val r=api.purchasesPage(page,25,filter)){is ApiResult.Success->{data=r.value;msg="${r.value.totalRows} purchase(s) • page ${r.value.page+1}/${r.value.totalPages.coerceAtLeast(1)}${if(r.source==ApiDataSource.CACHE)" • cached" else ""}"};else->msg=r.readableMessage()}}
     DseRegisterShell("Purchase Register","Bills, suppliers and payments",filter.q,{filter=filter.copy(q=it);page=0},msg,{refresh++},if(p.can("PURCHASE","CREATE")){{creating=true}}else null,kpis={data?.metrics?.let{m->Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
         DseHeroKpi("Total Purchases",money(m.totalPurchases),"${m.activeDocuments} active purchase document(s)",Icons.Rounded.ShoppingBag)
@@ -290,10 +286,7 @@ private fun SalesDocumentCard(record:SaleRecord,onActions:()->Unit,onClick:()->U
                     add(SwipeAction("Open",Icons.Rounded.Visibility){loadFull(r){selected=it}})
                     if(p.can("PURCHASE","EDIT"))add(SwipeAction("Edit",Icons.Rounded.Edit){loadFull(r){editor=it}})
                 },
-                swipeEndActions=buildList{
-                    if(outstanding>0.005&&p.can("PURCHASE","EDIT"))add(SwipeAction("Pay",Icons.Rounded.Payments){loadFull(r){payment=it}})
-                    add(SwipeAction("PDF",Icons.Rounded.PictureAsPdf){scope.launch{msg=shareCanonicalDocument(api,"PURCHASE_INVOICE",r.invoiceNo,"PDF")}})
-                },
+                swipeEndActions=listOf(SwipeAction("Actions",Icons.Rounded.MoreHoriz){actionTarget=r}),
                 onActions={actionTarget=r},
             ){loadFull(r){selected=it}}
         }
