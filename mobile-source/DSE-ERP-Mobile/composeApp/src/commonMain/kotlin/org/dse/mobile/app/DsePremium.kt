@@ -284,21 +284,23 @@ internal fun PremiumPrimaryButton(
     leadingIcon:ImageVector?=null,
     trailingIcon:ImageVector?=null,
 ){
+    val shape=RoundedCornerShape(18.dp)
+    val contentColor=if(enabled)Color.White else DseDeepPurple.copy(alpha=.78f)
     Box(
         modifier
             .heightIn(min=46.dp)
-            .shadow(if(enabled)12.dp else 0.dp,RoundedCornerShape(18.dp),ambientColor=DseViolet.copy(.18f),spotColor=DseViolet.copy(.24f))
-            .clip(RoundedCornerShape(18.dp))
-            .background(if(enabled)DseBrandGradient else Brush.linearGradient(listOf(Color(0xFFD7D3DF),Color(0xFFC7C1CE))))
-            .alpha(if(enabled)1f else .72f)
+            .shadow(if(enabled)12.dp else 0.dp,shape,ambientColor=DseViolet.copy(.18f),spotColor=DseViolet.copy(.24f))
+            .clip(shape)
+            .background(if(enabled)DseBrandGradient else Brush.linearGradient(listOf(DseLavender,Color(0xFFE9D5FF))))
+            .border(1.dp,if(enabled)Color.Transparent else DseViolet.copy(alpha=.28f),shape)
             .clickable(enabled=enabled,onClick=onClick),
         contentAlignment=Alignment.Center,
     ){
         Row((if(trailingIcon!=null)Modifier.fillMaxWidth() else Modifier).padding(horizontal=14.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.Center){
             val resolvedLeading=leadingIcon ?: semanticActionIcon(text)
-            Icon(resolvedLeading,null,tint=Color.White,modifier=Modifier.size(19.dp));Spacer(Modifier.width(8.dp))
-            Text(text,color=Color.White,style=MaterialTheme.typography.labelLarge,fontWeight=FontWeight.Bold)
-            if(trailingIcon!=null){Spacer(Modifier.weight(1f));Icon(trailingIcon,null,tint=Color.White,modifier=Modifier.size(19.dp))}
+            Icon(resolvedLeading,null,tint=contentColor,modifier=Modifier.size(19.dp));Spacer(Modifier.width(8.dp))
+            Text(text,color=contentColor,style=MaterialTheme.typography.labelLarge,fontWeight=FontWeight.Bold)
+            if(trailingIcon!=null){Spacer(Modifier.weight(1f));Icon(trailingIcon,null,tint=contentColor,modifier=Modifier.size(19.dp))}
         }
     }
 }
