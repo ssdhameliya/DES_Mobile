@@ -36,8 +36,8 @@ android {
         applicationId = "org.dse.erp.mobile"
         minSdk = 26
         targetSdk = 36
-        versionCode = 131
-        versionName = "1.2.11"
+        versionCode = 132
+        versionName = "1.2.12"
     }
 
     signingConfigs {
@@ -159,4 +159,3 @@ dependencies {
     implementation("androidx.biometric:biometric:1.1.0")
     implementation("androidx.fragment:fragment-ktx:1.9.0")
 }
-
