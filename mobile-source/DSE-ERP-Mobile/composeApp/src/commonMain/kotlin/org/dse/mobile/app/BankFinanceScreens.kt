@@ -96,9 +96,14 @@ private fun FinanceEditorDialog(api:DseErpHttpClient,current:FinanceRecord?,onCl
 private fun BankStatementWorkspace(api:DseErpHttpClient,p:PermissionContext,username:String){
     val canRecon=p.can("BANK_EXPENSE","RECONCILE");val canDelete=p.can("BANK_EXPENSE","DELETE")
     var batchPage by remember{mutableIntStateOf(0)};var batchFilter by remember{mutableStateOf(BankBatchFilter())};var batches by remember{mutableStateOf<BankBatchPage?>(null)};var batch by remember{mutableStateOf<BankBatch?>(null)};var batchFilterOpen by remember{mutableStateOf(false)}
-    var txPage by remember{mutableIntStateOf(0)};var txFilter by remember{mutableStateOf(BankTransactionFilter())};var txs by remember{mutableStateOf<BankTransactionPage?>(null)};var txFilterOpen by remember{mutableStateOf(false)};var msg by remember{mutableStateOf("")};var dismissedMessage by remember{mutableStateOf("")};var refresh by remember{mutableIntStateOf(0)};var selected by remember{mutableStateOf<BankTransaction?>(null)};var actionTarget by remember{mutableStateOf<BankTransaction?>(null)};val selectedIds=remember{mutableStateListOf<Long>()};var bulk by remember{mutableStateOf<String?>(null)};var deleteBatch by remember{mutableStateOf<BankBatch?>(null)};var source by remember{mutableStateOf<BankSource?>(null)};val scope=rememberCoroutineScope()
+    var txPage by remember{mutableIntStateOf(0)};var txFilter by remember{mutableStateOf(BankTransactionFilter())};var txs by remember{mutableStateOf<BankTransactionPage?>(null)};var txFilterOpen by remember{mutableStateOf(false)};var msg by remember{mutableStateOf("")};var dismissedMessage by remember{mutableStateOf("")};var refresh by remember{mutableIntStateOf(0)};var selected by remember{mutableStateOf<BankTransaction?>(null)};var selectedMode by remember{mutableStateOf<String?>(null)};var actionTarget by remember{mutableStateOf<BankTransaction?>(null)};val selectedIds=remember{mutableStateListOf<Long>()};var bulk by remember{mutableStateOf<String?>(null)};var deleteBatch by remember{mutableStateOf<BankBatch?>(null)};var source by remember{mutableStateOf<BankSource?>(null)};val scope=rememberCoroutineScope()
+    fun normalizedStatus(t:BankTransaction)=when(t.status.trim().uppercase()){ "REVIEWED"->"REVIEW"; else->t.status.trim().uppercase() }
+    fun bulkEligible(t:BankTransaction)=normalizedStatus(t) in setOf("UNMATCHED","SUGGESTED","REVIEW")
+    fun openTransaction(t:BankTransaction,mode:String?=null){selected=t;selectedMode=mode}
+    fun openStatementSource(t:BankTransaction){scope.launch{when(val r=api.bankSource(t.importId)){is ApiResult.Success->source=r.value;else->msg=r.readableMessage()}}}
+    fun reverseTransaction(t:BankTransaction,successMessage:String){scope.launch{when(val r=api.bankReverse(t.id,username)){is ApiResult.Success->{msg=r.value.message.ifBlank{successMessage};selectedIds.remove(t.id);refresh++};else->msg=r.readableMessage()}}}
     LaunchedEffect(api,batchPage,batchFilter,refresh){when(val r=api.bankBatches(batchPage,25,batchFilter)){is ApiResult.Success->{batches=r.value;if(batch==null||r.value.rows.none{it.id==batch?.id})batch=r.value.rows.firstOrNull()};else->msg=r.readableMessage()}}
-    LaunchedEffect(batch?.id,txPage,txFilter,refresh){val id=batch?.id?:return@LaunchedEffect;when(val r=api.bankTransactions(id,txPage,50,txFilter)){is ApiResult.Success->{txs=r.value;msg="${r.value.totalRows} transaction(s) • ${r.value.metrics?.reconciledPercent?:0.0}% reconciled${if(r.source==ApiDataSource.CACHE)" • cached" else ""}";selectedIds.retainAll(r.value.rows.map{it.id}.toSet())};else->msg=r.readableMessage()}}
+    LaunchedEffect(batch?.id,txPage,txFilter,refresh){val id=batch?.id?:return@LaunchedEffect;when(val r=api.bankTransactions(id,txPage,50,txFilter)){is ApiResult.Success->{txs=r.value;msg="${r.value.totalRows} transaction(s) • ${r.value.metrics?.reconciledPercent?:0.0}% reconciled${if(r.source==ApiDataSource.CACHE)" • cached" else ""}";selectedIds.retainAll(r.value.rows.filter(::bulkEligible).map{it.id}.toSet())};else->msg=r.readableMessage()}}
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal=10.dp,vertical=7.dp),verticalArrangement=Arrangement.spacedBy(7.dp)){
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){PremiumIconTile(Icons.Rounded.AccountBalance,DseInfo,size=34.dp);Column{Text("Bank Statement",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.ExtraBold);Text("Transactions, matching and audit",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}};FilledTonalIconButton(onClick={refresh++},modifier=Modifier.size(38.dp)){Icon(Icons.Rounded.Refresh,"Refresh",Modifier.size(19.dp))}}
         if(batches?.rows.orEmpty().isEmpty())Text("No imported bank statements found.") else {
@@ -106,7 +111,8 @@ private fun BankStatementWorkspace(api:DseErpHttpClient,p:PermissionContext,user
             Row(horizontalArrangement=Arrangement.spacedBy(6.dp),verticalAlignment=Alignment.CenterVertically){OutlinedButton(onClick={batchFilterOpen=true}){Icon(Icons.Rounded.FilterAlt,null);Text("Statement Filters")};OutlinedButton(enabled=batch!=null,onClick={scope.launch{val id=batch?.id?:return@launch;when(val r=api.bankSource(id)){is ApiResult.Success->source=r.value;else->msg=r.readableMessage()}}}){Text("Source")};if(canDelete&&batch!=null)OutlinedButton(onClick={deleteBatch=batch}){Text("Delete Statement")}}
             PagingControls(batchPage,batches?.totalPages?:1,batches?.totalRows?:0){batchPage=it;batch=null}
             Row(horizontalArrangement=Arrangement.spacedBy(6.dp),verticalAlignment=Alignment.CenterVertically){OutlinedButton(onClick={txFilterOpen=true}){Icon(Icons.Rounded.FilterAlt,null);Text("Transaction Filters")};Text("${selectedIds.size} selected",fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.primary)}
-            Row(verticalAlignment=Alignment.CenterVertically){Checkbox(checked=txs?.rows.orEmpty().isNotEmpty()&&selectedIds.size==txs?.rows.orEmpty().size,onCheckedChange={checked->selectedIds.clear();if(checked)selectedIds.addAll(txs?.rows.orEmpty().map{it.id})});Text("Select All Visible",fontWeight=FontWeight.SemiBold)}
+            val selectableRows=txs?.rows.orEmpty().filter(::bulkEligible)
+            Row(verticalAlignment=Alignment.CenterVertically){Checkbox(checked=selectableRows.isNotEmpty()&&selectedIds.size==selectableRows.size,onCheckedChange={checked->selectedIds.clear();if(checked)selectedIds.addAll(selectableRows.map{it.id})},enabled=canRecon&&selectableRows.isNotEmpty());Text("Select Reconciliation-Eligible",fontWeight=FontWeight.SemiBold)}
             if(canRecon&&selectedIds.isNotEmpty())FlowRow(horizontalArrangement=Arrangement.spacedBy(6.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){OutlinedButton(onClick={bulk="review"}){Text("Reviewed")};OutlinedButton(onClick={bulk="ignore"}){Text("Ignore")};Button(onClick={bulk="expense"}){Text("Move to Expense")};Button(onClick={bulk="entry"}){Text("Move to Bank Entry")}}
             Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(7.dp)){
                 if(txs==null){
@@ -119,7 +125,20 @@ private fun BankStatementWorkspace(api:DseErpHttpClient,p:PermissionContext,user
                         }
                     }
                 }else{
-                    txs?.rows?.forEach{t->DseRecordCard(if(t.credit>0)"Credit ${money(t.credit,batch?.currency?:"INR")}" else "Debit ${money(t.debit,batch?.currency?:"INR")}",t.description,if(t.credit>0)money(t.credit,batch?.currency?:"INR") else money(t.debit,batch?.currency?:"INR"),listOf("Status" to t.status),meta="${t.transactionDate} • ${t.reference}",selected=t.id in selectedIds,onSelect={if(t.id in selectedIds)selectedIds.remove(t.id)else selectedIds.add(t.id)},onActions={actionTarget=t}){selected=t}}
+                    txs?.rows?.forEach{t->
+                        val eligible=canRecon&&bulkEligible(t)
+                        DseRecordCard(
+                            if(t.credit>0)"Credit ${money(t.credit,batch?.currency?:"INR")}" else "Debit ${money(t.debit,batch?.currency?:"INR")}",
+                            t.description,
+                            if(t.credit>0)money(t.credit,batch?.currency?:"INR") else money(t.debit,batch?.currency?:"INR"),
+                            listOf("Status" to normalizedStatus(t)),
+                            meta="${t.transactionDate} • ${t.reference}",
+                            selected=t.id in selectedIds,
+                            onSelect=if(eligible) ({if(t.id in selectedIds)selectedIds.remove(t.id)else selectedIds.add(t.id)}) else null,
+                            swipeEndActions=listOf(SwipeAction("Actions",Icons.Rounded.MoreHoriz){actionTarget=t}),
+                            onActions={actionTarget=t},
+                        ){openTransaction(t)}
+                    }
                 }
             }
             PagingControls(txPage,txs?.totalPages?:1,txs?.totalRows?:0){txPage=it};if(msg.isNotBlank()&&noticeKindFor(msg)==null)Text(msg,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=2)
@@ -127,24 +146,44 @@ private fun BankStatementWorkspace(api:DseErpHttpClient,p:PermissionContext,user
     }
     noticeKindFor(msg)?.let{kind->if(msg!=dismissedMessage)DseNoticeDialog(msg,kind){dismissedMessage=msg}}
     actionTarget?.let{t->
-        val canRecon=p.can("BANK_EXPENSE","RECONCILE")
-        DseRecordActionSheet("Bank Transaction • ${t.transactionDate}","Statement transaction actions",buildList{
-            add(PremiumActionSpec(if(canRecon)"View / Reconcile" else "View Transaction",{selected=t}))
-            add(PremiumActionSpec(if(t.id in selectedIds)"Remove from Bulk Selection" else "Add to Bulk Selection",{if(t.id in selectedIds)selectedIds.remove(t.id)else selectedIds.add(t.id)}))
-            if(!t.linkedDocumentNo.isNullOrBlank())add(PremiumActionSpec("Open Linked ERP",{platformOpenExternalUrl("dseerp://${linkedRoute(t.linkedTargetType)}/${encodeBank(t.linkedDocumentNo.orEmpty())}")}))
-            add(PremiumActionSpec("Bank Audit Trail",{selected=t},icon=Icons.Rounded.Timeline))
+        val status=normalizedStatus(t)
+        val linked=!t.linkedDocumentNo.isNullOrBlank()
+        val debit=t.debit>0.005
+        DseRecordActionSheet("Bank Transaction • ${t.transactionDate}","Desktop-aligned statement actions • $status",buildList{
+            add(PremiumActionSpec("View Transaction Details",{openTransaction(t,"audit")}))
+            add(PremiumActionSpec("View Imported Statement",{openStatementSource(t)},icon=Icons.Rounded.Description))
+            add(PremiumActionSpec("View Audit History",{openTransaction(t,"audit")},icon=Icons.Rounded.Timeline))
+            when(status){
+                "UNMATCHED","SUGGESTED","REVIEW"->if(canRecon){
+                    add(PremiumActionSpec(if(status=="SUGGESTED")"Review Suggested Match" else "Match Transaction",{openTransaction(t,"match")},icon=Icons.Rounded.Link))
+                    if(debit)add(PremiumActionSpec("Move to Expense",{openTransaction(t,"expense")},icon=Icons.Rounded.Payments))
+                    if(status!="REVIEW")add(PremiumActionSpec("Mark for Review",{openTransaction(t,"review")},icon=Icons.Rounded.FactCheck))
+                    add(PremiumActionSpec("Mark as Ignored",{openTransaction(t,"ignore")},icon=Icons.Rounded.Block))
+                }
+                "MATCHED"->if(canRecon){
+                    add(PremiumActionSpec("View Match / Linked Record",{if(linked)platformOpenExternalUrl("dseerp://${linkedRoute(t.linkedTargetType)}/${encodeBank(t.linkedDocumentNo.orEmpty())}") else openTransaction(t,"audit")},enabled=linked,disabledReason="Linked ERP record is not available.",icon=Icons.Rounded.Link))
+                    if(t.linkedTargetType.equals("BANK_ENTRY",true))add(PremiumActionSpec("View Bank Entry",{platformOpenExternalUrl("dseerp://${linkedRoute(t.linkedTargetType)}/${encodeBank(t.linkedDocumentNo.orEmpty())}")},enabled=linked,disabledReason="Linked bank entry is not available.",icon=Icons.Rounded.AccountBalance))
+                    add(PremiumActionSpec("Unmatch / Reverse",{reverseTransaction(t,"Reconciliation reversed")},destructive=true,icon=Icons.Rounded.Undo))
+                }
+                "EXPENSE"->if(canRecon){
+                    add(PremiumActionSpec("View Expense",{if(linked)platformOpenExternalUrl("dseerp://${linkedRoute(t.linkedTargetType)}/${encodeBank(t.linkedDocumentNo.orEmpty())}") else openTransaction(t,"audit")},enabled=linked,disabledReason="Linked expense is not available.",icon=Icons.Rounded.ReceiptLong))
+                    add(PremiumActionSpec("Unmatch / Reverse",{reverseTransaction(t,"Expense reconciliation reversed")},destructive=true,icon=Icons.Rounded.Undo))
+                }
+                "IGNORED"->if(canRecon)add(PremiumActionSpec("Return to Unmatched",{reverseTransaction(t,"Transaction returned to unmatched")},icon=Icons.Rounded.Undo))
+            }
+            if(canRecon&&bulkEligible(t))add(PremiumActionSpec(if(t.id in selectedIds)"Remove from Bulk Selection" else "Add to Bulk Selection",{if(t.id in selectedIds)selectedIds.remove(t.id)else selectedIds.add(t.id)}))
         },{actionTarget=null})
     }
     if(batchFilterOpen)BankBatchFilterDialog(batchFilter,{batchFilterOpen=false}){batchFilter=it;batchPage=0;batch=null;batchFilterOpen=false}
     if(txFilterOpen)BankTransactionFilterDialog(txFilter,{txFilterOpen=false}){txFilter=it;txPage=0;selectedIds.clear();txFilterOpen=false}
-    selected?.let{t->BankTransactionDialog(api,t,p,username,{selected=null}){msg=it;selected=null;refresh++}}
+    selected?.let{t->BankTransactionDialog(api,t,p,username,selectedMode,{selected=null;selectedMode=null}){msg=it;selected=null;selectedMode=null;refresh++}}
     bulk?.let{action->if(canRecon)BulkBankDialog(api,action,selectedIds.toList(),username,{bulk=null}){msg=it;bulk=null;selectedIds.clear();refresh++} else bulk=null}
     deleteBatch?.let{b->TypedBankDeleteDialog(b,{deleteBatch=null}){scope.launch{when(val r=api.deleteBankBatch(b.id,username)){is ApiResult.Success->{msg="${r.value.message} • ${r.value.deletedTransactions} transactions deleted • ${r.value.reversedTransactions} reversed";deleteBatch=null;batch=null;refresh++};else->msg=r.readableMessage()}}}}
     source?.let{s->PremiumAlertDialog(onDismissRequest={source=null},title={Text("Statement Source")},text={Column(Modifier.heightIn(max=560.dp).verticalScroll(rememberScrollState())){detailFinanceRows(listOf("File" to s.fileName,"Fingerprint" to s.fingerprint));Text("Source content is preserved by the server for audit.",style=MaterialTheme.typography.bodySmall)}},confirmButton={Button(onClick={platformShareText("Bank Statement ${s.fileName}",s.csvContent)}){Text("Share Source")}},dismissButton={TextButton(onClick={source=null}){Text("Close")}})}
 }
 
 @Composable private fun BankBatchFilterDialog(current:BankBatchFilter,onClose:()->Unit,onApply:(BankBatchFilter)->Unit){var d by remember{mutableStateOf(current)};PremiumAlertDialog(onDismissRequest=onClose,title={Text("Statement Filters")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){DseField("Search",d.q,singleLine=true,onValue={d=d.copy(q=it)});DseField("Account",d.account,singleLine=true,onValue={d=d.copy(account=it)});DseSelect("Status",d.status,listOf("ALL","OPEN","PARTIAL","RECONCILED"),onValue={d=d.copy(status=it.takeUnless{x->x=="ALL"}.orEmpty())});DseDateField("From",d.fromDate,onValue={d=d.copy(fromDate=it)});DseDateField("To",d.toDate,onValue={d=d.copy(toDate=it)})}},confirmButton={Button(onClick={onApply(d)}){Text("Apply")}},dismissButton={Row{TextButton(onClick={onApply(BankBatchFilter())}){Text("Reset")};TextButton(onClick=onClose){Text("Cancel")}}})}
-@Composable private fun BankTransactionFilterDialog(current:BankTransactionFilter,onClose:()->Unit,onApply:(BankTransactionFilter)->Unit){var d by remember{mutableStateOf(current)};PremiumAlertDialog(onDismissRequest=onClose,title={Text("Transaction Filters")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){DseField("Search",d.q,singleLine=true,onValue={d=d.copy(q=it)});DseSelect("Status",d.status,listOf("ALL","UNMATCHED","PARTIAL","MATCHED","REVIEWED","IGNORED","EXPENSE","BANK ENTRY"),onValue={d=d.copy(status=it.takeUnless{x->x=="ALL"}.orEmpty())});DseSelect("Direction",d.direction,listOf("ALL","CREDIT","DEBIT"),onValue={d=d.copy(direction=it)});DseDateField("From",d.fromDate,onValue={d=d.copy(fromDate=it)});DseDateField("To",d.toDate,onValue={d=d.copy(toDate=it)})}},confirmButton={Button(onClick={onApply(d)}){Text("Apply")}},dismissButton={Row{TextButton(onClick={onApply(BankTransactionFilter())}){Text("Reset")};TextButton(onClick=onClose){Text("Cancel")}}})}
+@Composable private fun BankTransactionFilterDialog(current:BankTransactionFilter,onClose:()->Unit,onApply:(BankTransactionFilter)->Unit){var d by remember{mutableStateOf(current)};PremiumAlertDialog(onDismissRequest=onClose,title={Text("Transaction Filters")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){DseField("Search",d.q,singleLine=true,onValue={d=d.copy(q=it)});DseSelect("Status",d.status,listOf("ALL","UNMATCHED","SUGGESTED","MATCHED","EXPENSE","REVIEW","IGNORED"),onValue={d=d.copy(status=it.takeUnless{x->x=="ALL"}.orEmpty())});DseSelect("Direction",d.direction,listOf("ALL","CREDIT","DEBIT"),onValue={d=d.copy(direction=it)});DseDateField("From",d.fromDate,onValue={d=d.copy(fromDate=it)});DseDateField("To",d.toDate,onValue={d=d.copy(toDate=it)})}},confirmButton={Button(onClick={onApply(d)}){Text("Apply")}},dismissButton={Row{TextButton(onClick={onApply(BankTransactionFilter())}){Text("Reset")};TextButton(onClick=onClose){Text("Cancel")}}})}
 
 @Composable
 private fun BankTransactionDialog(
@@ -152,6 +191,7 @@ private fun BankTransactionDialog(
     t: BankTransaction,
     p: PermissionContext,
     username: String,
+    initialMode: String? = null,
     onClose: () -> Unit,
     onDone: (String) -> Unit
 ) {
@@ -161,7 +201,7 @@ private fun BankTransactionDialog(
     val allocations = remember { mutableStateMapOf<Int, String>() }
     var note by remember { mutableStateOf("") }
     val reconEditable = canRecon && t.status.uppercase() in setOf("UNMATCHED", "SUGGESTED", "REVIEW")
-    var mode by remember(t.id,t.status,canRecon) { mutableStateOf(if (reconEditable) "match" else "audit") }
+    var mode by remember(t.id,t.status,canRecon,initialMode) { mutableStateOf(initialMode?.takeIf{reconEditable||it=="audit"} ?: if (reconEditable) "match" else "audit") }
     var category by remember { mutableStateOf("") }
     var account by remember { mutableStateOf("") }
     var paymentMode by remember { mutableStateOf("") }
@@ -315,15 +355,16 @@ private fun BankTransactionDialog(
                                 supportingContent = { Text("${a.detail} • ${a.previousStatus} → ${a.newStatus} • ${a.performedBy}") }
                             )
                         }
-                        if (canRecon && t.status.uppercase() != "UNMATCHED") {
+                        val reversibleStatus=when(t.status.trim().uppercase()){ "REVIEWED"->"REVIEW"; else->t.status.trim().uppercase() }
+                        if (canRecon && reversibleStatus in setOf("MATCHED","EXPENSE","IGNORED")) {
                             OutlinedButton(onClick = {
                                 scope.launch {
                                     when (val r = api.bankReverse(t.id, username)) {
-                                        is ApiResult.Success -> onDone(r.value.message.ifBlank { "Reconciliation reversed" })
+                                        is ApiResult.Success -> onDone(r.value.message.ifBlank { if(reversibleStatus=="IGNORED")"Transaction returned to unmatched" else "Reconciliation reversed" })
                                         else -> msg = r.readableMessage()
                                     }
                                 }
-                            }) { Text("Reverse / Reopen") }
+                            }) { Text(if(reversibleStatus=="IGNORED")"Return to Unmatched" else "Unmatch / Reverse") }
                         }
                     }
                 }

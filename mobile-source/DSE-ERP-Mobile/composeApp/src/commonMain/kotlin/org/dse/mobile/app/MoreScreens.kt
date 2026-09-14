@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import org.dse.mobile.core.api.*
 import org.dse.mobile.core.config.MobileBuildInfo
 import org.dse.mobile.core.model.*
+import org.dse.mobile.core.offline.OfflineRepository
 
 private fun PermissionContext.canOpen(d:MoreDestination):Boolean=when(d){
     MoreDestination.PURCHASE->can("PURCHASE")
@@ -583,6 +584,8 @@ private fun reportShareText(from:String,to:String,type:String,r:ReportBundle)=bu
     var edit by remember{mutableStateOf(false)}
     var password by remember{mutableStateOf(false)}
     var refresh by remember{mutableIntStateOf(0)}
+    var biometricEnabled by remember{mutableStateOf(OfflineRepository.biometricLoginEnabled())}
+    val biometricAvailable=platformBiometricAvailable()
     val scope=rememberCoroutineScope()
     LaunchedEffect(refresh){when(val r=api.currentProfile()){is ApiResult.Success->{profile=r.value;msg=""};else->msg=r.readableMessage()}}
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).verticalScroll(rememberScrollState()).padding(14.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
@@ -603,8 +606,42 @@ private fun reportShareText(from:String,to:String,type:String,r:ReportBundle)=bu
                 PremiumPrimaryButton("Edit Profile",{edit=true},Modifier.weight(1f),leadingIcon=Icons.Rounded.Edit)
                 PremiumSecondaryButton("Password",{password=true},Modifier.weight(1f),icon=Icons.Rounded.Lock)
             }
-            PremiumCard(Modifier.fillMaxWidth(),padding=13.dp){
-                Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){PremiumIconTile(Icons.Rounded.Fingerprint,DseSuccess,size=42.dp);Column(Modifier.weight(1f)){Text(platformBiometricUnlockLabel(),fontWeight=FontWeight.Bold);Text("Native ${platformDeviceClassLabel()} secure unlock is supported after sign-in.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
+            if(platformName().equals("Android",true)){
+                PremiumCard(Modifier.fillMaxWidth(),padding=13.dp){
+                    Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){
+                        PremiumIconTile(Icons.Rounded.Fingerprint,if(biometricEnabled)DseSuccess else DseInfo,size=42.dp)
+                        Column(Modifier.weight(1f)){
+                            Text("Fingerprint / biometric sign-in",fontWeight=FontWeight.Bold)
+                            Text(
+                                when{
+                                    !biometricAvailable->"Set up a fingerprint, face unlock or device credential in Android first."
+                                    biometricEnabled->"Enabled. Your encrypted signed-in session can be unlocked without re-entering the password."
+                                    else->"Off. Turn this on once to use ${platformBiometricUnlockLabel()} on the sign-in screen."
+                                },
+                                style=MaterialTheme.typography.bodySmall,
+                                color=MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked=biometricEnabled,
+                            enabled=biometricAvailable,
+                            onCheckedChange={enable->
+                                if(!enable){
+                                    OfflineRepository.setBiometricLoginEnabled(false)
+                                    biometricEnabled=false
+                                    msg="Biometric sign-in disabled"
+                                }else scope.launch{
+                                    val auth=platformAuthenticateBiometric("Enable biometric sign-in")
+                                    if(auth.success){
+                                        OfflineRepository.setBiometricLoginEnabled(true)
+                                        biometricEnabled=true
+                                        msg="Biometric sign-in enabled"
+                                    }else msg=auth.message.ifBlank{"Biometric verification was not completed"}
+                                }
+                            },
+                        )
+                    }
+                }
             }
         }
         if(msg.isNotBlank())Text(msg,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)

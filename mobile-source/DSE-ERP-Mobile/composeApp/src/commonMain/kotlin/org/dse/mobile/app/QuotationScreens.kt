@@ -30,13 +30,18 @@ internal fun QuotationsWorkspace(api:DseErpHttpClient,p:PermissionContext,userna
     var savedViews by remember{mutableStateOf<List<SavedView>>(emptyList())};var savedChoice by remember{mutableStateOf("")};var saveViewPrompt by remember{mutableStateOf(false)}
     val scope=rememberCoroutineScope()
     fun loadFull(row:QuotationRecord,after:(QuotationRecord)->Unit){scope.launch{when(val x=api.quotationById(row.id)){is ApiResult.Success->after(x.value);else->msg=x.readableMessage()}}}
-    LaunchedEffect(openTarget?.moduleKey,openTarget?.recordId,openTarget?.reference){
+    LaunchedEffect(openTarget?.moduleKey,openTarget?.recordId,openTarget?.reference,openTarget?.openActions){
         val t=openTarget
         if(t!=null&&t.moduleKey.uppercase() in setOf("QUOTATION","QUOTATIONS")){
             if(t.reference=="__CREATE__"){creating=true;onTargetConsumed()}
             else {val id=t.recordId?.takeIf{it in 1..Int.MAX_VALUE.toLong()}?.toInt()
-                if(id!=null){when(val r=api.quotationById(id)){is ApiResult.Success->{selected=r.value;onTargetConsumed()};else->{msg=r.readableMessage();onTargetConsumed()}}}
-                else if(t.reference.isNotBlank()){q=t.reference;page=0;onTargetConsumed()}
+                if(id!=null){when(val r=api.quotationById(id)){is ApiResult.Success->{if(t.openActions)actionTarget=r.value else selected=r.value;onTargetConsumed()};else->{msg=r.readableMessage();onTargetConsumed()}}}
+                else if(t.reference.isNotBlank()){
+                    when(val pageResult=api.quotationsPage(0,25,t.reference)){
+                        is ApiResult.Success->{val match=pageResult.value.rows.firstOrNull{it.no.equals(t.reference,true)};if(match!=null&&t.openActions)actionTarget=match else q=t.reference;onTargetConsumed()}
+                        else->{q=t.reference;page=0;onTargetConsumed()}
+                    }
+                }
             }
         }
     }
@@ -56,10 +61,7 @@ internal fun QuotationsWorkspace(api:DseErpHttpClient,p:PermissionContext,userna
                 add(SwipeAction("Open",Icons.Rounded.Visibility){loadFull(r){selected=it}})
                 if(p.can("QUOTATION","EDIT"))add(SwipeAction("Edit",Icons.Rounded.Edit){loadFull(r){editor=it}})
             },
-            swipeEndActions=buildList{
-                add(SwipeAction("PDF",Icons.Rounded.PictureAsPdf){loadFull(r){full->scope.launch{when(val lines=api.quotationLines(full.id)){is ApiResult.Success->msg=if(shareBusinessPdf(quotationBusinessDocument(full,lines.value)))"Quotation PDF opened" else "Unable to open quotation PDF";else->msg=lines.readableMessage()}}}})
-                if(p.can("QUOTATION","DELETE"))add(SwipeAction("Delete",Icons.Rounded.Delete,true){loadFull(r){confirm=it}})
-            },
+            swipeEndActions=listOf(SwipeAction("Actions",Icons.Rounded.MoreHoriz){actionTarget=r}),
             onActions={actionTarget=r},
         ){loadFull(r){selected=it}}}
     }
