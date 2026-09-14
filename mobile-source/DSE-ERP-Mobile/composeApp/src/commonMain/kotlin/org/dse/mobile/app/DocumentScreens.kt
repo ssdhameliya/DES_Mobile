@@ -100,7 +100,7 @@ private fun SalesDocumentCard(record:SaleRecord,onActions:()->Unit,onClick:()->U
         when(val health=api.health()){
             is ApiResult.NetworkError->{
                 if(create){
-                    msg="ERP is offline. New Sales are kept on screen and are not queued automatically because v10.0.5 has no idempotency key. Reconnect and press Save again."
+                    msg="ERP is offline. New Sales are kept on screen and are not queued automatically because the current ERP API does not expose an idempotency key for this create operation. Reconnect and press Save again."
                 }else{
                     OfflineRepository.enqueueSale(record,false)
                     msg="Pending Local Sync — this row-versioned Sale update was not sent because ERP is offline."
@@ -118,11 +118,21 @@ private fun SalesDocumentCard(record:SaleRecord,onActions:()->Unit,onClick:()->U
         }
     }
 
-    LaunchedEffect(openTarget?.moduleKey,openTarget?.reference,openTarget?.recordId,openTarget?.openActions){
+    LaunchedEffect(openTarget?.moduleKey,openTarget?.reference,openTarget?.recordId,openTarget?.openActions,openTarget?.action){
         val t=openTarget
         if(t!=null&&t.moduleKey.uppercase() in setOf("SALE","SALES")){
             if(t.reference=="__CREATE__"){creating=true;onTargetConsumed()}
-            else if(t.reference.isNotBlank())when(val r=api.saleByInvoice(t.reference)){is ApiResult.Success->{if(t.openActions)actionTarget=r.value else selected=r.value;onTargetConsumed()};else->{msg=r.readableMessage();onTargetConsumed()}}
+            else if(t.reference.isNotBlank())when(val r=api.saleByInvoice(t.reference)){
+                is ApiResult.Success->{
+                    when{
+                        t.action==LinkedRecordAction.PAYMENT->payment=r.value
+                        t.openActions->actionTarget=r.value
+                        else->selected=r.value
+                    }
+                    onTargetConsumed()
+                }
+                else->{msg=r.readableMessage();onTargetConsumed()}
+            }
         }
     }
     LaunchedEffect(api,refresh){savedViews=(api.savedViews("SALES_REGISTER",p.user?.id) as? ApiResult.Success)?.value.orEmpty()}
@@ -230,7 +240,7 @@ private fun SalesDocumentCard(record:SaleRecord,onActions:()->Unit,onClick:()->U
     returning?.let{r->ReturnCreateDialog(api,ReturnSource("SALE",r.invoiceNo,r.customer?.id?:0,r.customer?.name.orEmpty(),r.lines),{returning=null}){msg=it;returning=null;refresh++}}
     reject?.let{r->ReasonDialog("Reject Sale","Reason",{reject=null}){reason->scope.launch{when(val x=api.saleAction(r.invoiceNo,"reject",reason)){is ApiResult.Success->{msg=x.value.message;reject=null;refresh++};else->msg=x.readableMessage()}}}}
     email?.let{r->BusinessEmailDialog(api,"SALE",r.id?:0,r.invoiceNo,r.customer?.email.orEmpty(),businessEmailBody(r.businessDocument()),username,r.businessDocument(),{email=null}){msg=it;email=null;refresh++}}
-    confirm?.let{(action,r)->ConfirmDialog(if(action=="delete")"Delete Sale" else "Cancel Sale",if(action=="delete")"Delete ${r.invoiceNo}? The v10.0.5 server will refuse deletion when financial or return integrity rules do not allow it." else "Cancel ${r.invoiceNo}? The server will enforce payment and return safety rules.",if(action=="delete")"Delete" else "Cancel",action=="delete",{confirm=null}){scope.launch{val x=if(action=="delete")api.deleteSale(r.invoiceNo)else api.saleAction(r.invoiceNo,"cancel");when(x){is ApiResult.Success->{msg=x.value.message;confirm=null;refresh++};else->msg=x.readableMessage()}}}}
+    confirm?.let{(action,r)->ConfirmDialog(if(action=="delete")"Delete Sale" else "Cancel Sale",if(action=="delete")"Delete ${r.invoiceNo}? The ERP server will refuse deletion when financial or return integrity rules do not allow it." else "Cancel ${r.invoiceNo}? The server will enforce payment and return safety rules.",if(action=="delete")"Delete" else "Cancel",action=="delete",{confirm=null}){scope.launch{val x=if(action=="delete")api.deleteSale(r.invoiceNo)else api.saleAction(r.invoiceNo,"cancel");when(x){is ApiResult.Success->{msg=x.value.message;confirm=null;refresh++};else->msg=x.readableMessage()}}}}
 }
 
 @Composable internal fun PurchaseWorkspace(api:DseErpHttpClient,p:PermissionContext,username:String,openTarget:RecordTarget?=null,onTargetConsumed:()->Unit={}){
@@ -255,12 +265,28 @@ private fun SalesDocumentCard(record:SaleRecord,onActions:()->Unit,onClick:()->U
     fun loadFull(row:PurchaseRecord,after:(PurchaseRecord)->Unit){scope.launch{when(val x=api.purchaseByInvoice(row.invoiceNo)){is ApiResult.Success->after(x.value);else->msg=x.readableMessage()}}}
     suspend fun save(record:PurchaseRecord,create:Boolean){
         when(val health=api.health()){
-            is ApiResult.NetworkError->{if(create){msg="ERP is offline. New Purchases are kept on screen and are not queued automatically because v10.0.5 has no idempotency key. Reconnect and press Save again."}else{OfflineRepository.enqueuePurchase(record,false);msg="Pending Local Sync — this row-versioned Purchase update was not sent because ERP is offline.";editor=null}}
+            is ApiResult.NetworkError->{if(create){msg="ERP is offline. New Purchases are kept on screen and are not queued automatically because the current ERP API does not expose an idempotency key for this create operation. Reconnect and press Save again."}else{OfflineRepository.enqueuePurchase(record,false);msg="Pending Local Sync — this row-versioned Purchase update was not sent because ERP is offline.";editor=null}}
             is ApiResult.Success->{val result=if(create)api.createPurchase(record)else api.updatePurchase(record);when(result){is ApiResult.Success->{msg="${if(create)"Created" else "Updated"} ${result.value.invoiceNo} • ${money(result.value.totalAmount,result.value.currency?.substringBefore(' ')?:"INR")}";creating=false;editor=null;refresh++};else->msg=result.readableMessage()}}
             else->msg=health.readableMessage()
         }
     }
-    LaunchedEffect(openTarget?.moduleKey,openTarget?.reference,openTarget?.recordId,openTarget?.openActions){val t=openTarget;if(t!=null&&t.moduleKey.uppercase() in setOf("PURCHASE","PURCHASES")){if(t.reference=="__CREATE__"){creating=true;onTargetConsumed()}else if(t.reference.isNotBlank()){when(val r=api.purchaseByInvoice(t.reference)){is ApiResult.Success->{if(t.openActions)actionTarget=r.value else selected=r.value;onTargetConsumed()};else->{msg=r.readableMessage();onTargetConsumed()}}}}}
+    LaunchedEffect(openTarget?.moduleKey,openTarget?.reference,openTarget?.recordId,openTarget?.openActions,openTarget?.action){
+        val t=openTarget
+        if(t!=null&&t.moduleKey.uppercase() in setOf("PURCHASE","PURCHASES")){
+            if(t.reference=="__CREATE__"){creating=true;onTargetConsumed()}
+            else if(t.reference.isNotBlank())when(val r=api.purchaseByInvoice(t.reference)){
+                is ApiResult.Success->{
+                    when{
+                        t.action==LinkedRecordAction.PAYMENT->payment=r.value
+                        t.openActions->actionTarget=r.value
+                        else->selected=r.value
+                    }
+                    onTargetConsumed()
+                }
+                else->{msg=r.readableMessage();onTargetConsumed()}
+            }
+        }
+    }
     LaunchedEffect(api,page,filter,refresh){when(val r=api.purchasesPage(page,25,filter)){is ApiResult.Success->{data=r.value;msg="${r.value.totalRows} purchase(s) • page ${r.value.page+1}/${r.value.totalPages.coerceAtLeast(1)}${if(r.source==ApiDataSource.CACHE)" • cached" else ""}"};else->msg=r.readableMessage()}}
     DseRegisterShell("Purchase Register","Bills, suppliers and payments",filter.q,{filter=filter.copy(q=it);page=0},msg,{refresh++},if(p.can("PURCHASE","CREATE")){{creating=true}}else null,kpis={data?.metrics?.let{m->Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
         DseHeroKpi("Total Purchases",money(m.totalPurchases),"${m.activeDocuments} active purchase document(s)",Icons.Rounded.ShoppingBag)
@@ -587,7 +613,7 @@ private fun SaleEditorDialog(api:DseErpHttpClient,current:SaleRecord?,onClose:()
             }
             val visibleSaleError=saleValidationError?.takeUnless{it in setOf("Select customer","Enter delivery address","Add items")}
             if(visibleSaleError!=null)Text(visibleSaleError,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
-            if(msg.isNotBlank())Text(msg,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+            DseMessageFeedback(msg)
         }},
         confirmButton={PremiumPrimaryButton(
             text=if(current==null)"Create Sale" else "Save Changes",
@@ -710,7 +736,7 @@ private fun PurchaseEditorDialog(api:DseErpHttpClient,current:PurchaseRecord?,on
             DseSection("Totals — server recalculates on Save",Icons.Rounded.Calculate){val c=currency.substringBefore(' ');detailRows(listOf("Gross" to money(totals.gross,c),"Discount" to money(totals.discount,c),"Taxable" to money(totals.taxable,c),"GST" to money(totals.tax,c),"Charges" to money(totals.chargeTotal,c),"Total" to money(totals.total,c)))}
             val visiblePurchaseError=purchaseValidationError?.takeUnless{it in setOf("Select supplier","Enter delivery address","Add items")}
             if(visiblePurchaseError!=null)Text(visiblePurchaseError,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
-            if(msg.isNotBlank())Text(msg,color=MaterialTheme.colorScheme.error)
+            DseMessageFeedback(msg)
         }},
         confirmButton={PremiumPrimaryButton(
             text=if(current==null||createFromTemplate)"Create Purchase" else "Save Changes",
@@ -837,7 +863,7 @@ internal fun PaymentDialog(api:DseErpHttpClient,type:String,documentId:Int,docum
             Surface(shape=androidx.compose.foundation.shape.RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surfaceVariant.copy(.55f),modifier=Modifier.fillMaxWidth()){
                 Row(Modifier.padding(11.dp),horizontalArrangement=Arrangement.SpaceBetween){Text("Balance after payment",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Text(money(after),fontWeight=FontWeight.Bold,color=if(after>0)DseWarning else DseSuccess)}
             }
-            if(msg.isNotBlank())Text(msg,style=MaterialTheme.typography.bodySmall,color=if(msg.startsWith("Payment recorded"))DseSuccess else MaterialTheme.colorScheme.error)
+            DseMessageFeedback(msg)
             PremiumPrimaryButton(
                 text=if(busy)"Recording…" else "Record Payment",
                 enabled=!busy&&(amount.toDoubleOrNull()?:0.0)>0&&mode.isNotBlank()&&documentId>0,
@@ -875,13 +901,13 @@ internal fun PaymentDialog(api:DseErpHttpClient,type:String,documentId:Int,docum
 private fun PaymentEditDialog(api:DseErpHttpClient,row:PaymentRow,onClose:()->Unit,onDone:(String)->Unit){
     var date by remember{mutableStateOf(row.date)};var amount by remember{mutableStateOf(row.amount.toString())};var mode by remember{mutableStateOf(row.mode)};var reference by remember{mutableStateOf(row.reference)};var notes by remember{mutableStateOf(row.notes)};var from by remember{mutableStateOf(row.receivedFrom)};var modes by remember{mutableStateOf<List<String>>(emptyList())};var msg by remember{mutableStateOf("")};val scope=rememberCoroutineScope()
     LaunchedEffect(Unit){modes=(api.lookupValuesByCode("PAYMENT_MODE") as? ApiResult.Success)?.value.orEmpty()}
-    PremiumAlertDialog(onDismissRequest=onClose,title={Text("Edit Payment #${row.id}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){DseDateField("Date",date,required=true,onValue={date=it});DseNumberField("Amount",amount,min=0.01,required=true,onValue={amount=it});DseSelect("Mode",mode,modes.ifEmpty{listOf(row.mode)},required=true,onValue={mode=it});DseField("Reference",reference,singleLine=true,onValue={reference=it});DseField("Received From / Paid To",from,singleLine=true,onValue={from=it});DseField("Notes",notes,onValue={notes=it});if(msg.isNotBlank())Text(msg,color=MaterialTheme.colorScheme.error)}},confirmButton={Button(onClick={scope.launch{when(val r=api.updatePayment(row.id,PaymentUpdateRequest(date,amount.toDoubleOrNull()?:0.0,mode,reference,notes,from))){is ApiResult.Success->onDone("Payment updated");else->msg=r.readableMessage()}}}){Text("Save")}},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})
+    PremiumAlertDialog(onDismissRequest=onClose,title={Text("Edit Payment #${row.id}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){DseDateField("Date",date,required=true,onValue={date=it});DseNumberField("Amount",amount,min=0.01,required=true,onValue={amount=it});DseSelect("Mode",mode,modes.ifEmpty{listOf(row.mode)},required=true,onValue={mode=it});DseField("Reference",reference,singleLine=true,onValue={reference=it});DseField("Received From / Paid To",from,singleLine=true,onValue={from=it});DseField("Notes",notes,onValue={notes=it});DseMessageFeedback(msg)}},confirmButton={Button(onClick={scope.launch{when(val r=api.updatePayment(row.id,PaymentUpdateRequest(date,amount.toDoubleOrNull()?:0.0,mode,reference,notes,from))){is ApiResult.Success->onDone("Payment updated");else->msg=r.readableMessage()}}}){Text("Save")}},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})
 }
 
 @Composable
 private fun PaymentProofDialog(api:DseErpHttpClient,row:PaymentRow,onClose:()->Unit,onDone:(String)->Unit){
     var msg by remember{mutableStateOf("")};var busy by remember{mutableStateOf(false)};val scope=rememberCoroutineScope()
-    PremiumAlertDialog(onDismissRequest=onClose,title={Text("Payment Proof #${row.id}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){if(row.attachment.isNotBlank()){Text("Existing proof: ${documentFileName(row.attachment,"payment-${row.id}.bin")}");Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){OutlinedButton(onClick={scope.launch{when(val f=api.paymentAttachmentFile(row.id)){is ApiResult.Success->{if(!platformShareFile("Payment proof #${row.id}",documentFileName(row.attachment,"payment-${row.id}.bin"),f.value))msg="Unable to open payment proof"};else->msg=f.readableMessage()}}}){Icon(Icons.Rounded.OpenInNew,null);Text("Open")};OutlinedButton(onClick={scope.launch{busy=true;when(val x=api.deletePaymentAttachment(row.id)){is ApiResult.Success->onDone("Payment proof removed");else->msg=x.readableMessage()};busy=false}}){Icon(Icons.Rounded.Delete,null);Text("Remove")}}};Text("Choose a file or image to attach to this payment.");if(msg.isNotBlank())Text(msg,color=MaterialTheme.colorScheme.error)}},confirmButton={PremiumPrimaryButton("Choose & Upload",{if(!busy)platformPickAttachment { picked->if(picked.fileName.isNullOrBlank()||picked.base64.isNullOrBlank()){msg=picked.error?:"No attachment selected";return@platformPickAttachment};scope.launch{busy=true;try{when(val r=api.uploadPaymentAttachment(row.id,picked.fileName!!,decodeBase64Portable(picked.base64!!))){is ApiResult.Success->onDone("Payment proof attached");else->msg=r.readableMessage()}}catch(t:Throwable){msg=t.message?:"Attachment upload failed"}finally{busy=false}} }},enabled=!busy,leadingIcon=Icons.Rounded.AttachFile)},dismissButton={PremiumSecondaryButton("Close",onClose)})
+    PremiumAlertDialog(onDismissRequest=onClose,title={Text("Payment Proof #${row.id}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){if(row.attachment.isNotBlank()){Text("Existing proof: ${documentFileName(row.attachment,"payment-${row.id}.bin")}");Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){OutlinedButton(onClick={scope.launch{when(val f=api.paymentAttachmentFile(row.id)){is ApiResult.Success->{if(!platformShareFile("Payment proof #${row.id}",documentFileName(row.attachment,"payment-${row.id}.bin"),f.value))msg="Unable to open payment proof"};else->msg=f.readableMessage()}}}){Icon(Icons.Rounded.OpenInNew,null);Text("Open")};OutlinedButton(onClick={scope.launch{busy=true;when(val x=api.deletePaymentAttachment(row.id)){is ApiResult.Success->onDone("Payment proof removed");else->msg=x.readableMessage()};busy=false}}){Icon(Icons.Rounded.Delete,null);Text("Remove")}}};Text("Choose a file or image to attach to this payment.");DseMessageFeedback(msg)}},confirmButton={PremiumPrimaryButton("Choose & Upload",{if(!busy)platformPickAttachment { picked->if(picked.fileName.isNullOrBlank()||picked.base64.isNullOrBlank()){msg=picked.error?:"No attachment selected";return@platformPickAttachment};scope.launch{busy=true;try{when(val r=api.uploadPaymentAttachment(row.id,picked.fileName!!,decodeBase64Portable(picked.base64!!))){is ApiResult.Success->onDone("Payment proof attached");else->msg=r.readableMessage()}}catch(t:Throwable){msg=t.message?:"Attachment upload failed"}finally{busy=false}} }},enabled=!busy,leadingIcon=Icons.Rounded.AttachFile)},dismissButton={PremiumSecondaryButton("Close",onClose)})
 }
 
 @Composable
@@ -921,7 +947,7 @@ private fun BusinessEmailDialog(api:DseErpHttpClient,type:String,documentId:Int,
             DseField("Subject",subject,singleLine=true,required=true,onValue={subject=it})
             DseField("Message",body,onValue={body=it})
             PremiumSecondaryButton(if(preparing)"Preparing official PDF…" else attachmentName?:"Attach file",onClick={platformPickAttachment { picked->if(!picked.fileName.isNullOrBlank()&&!picked.base64.isNullOrBlank()){attachmentName=picked.fileName;attachmentBase64=picked.base64;msg="Attached ${picked.fileName}"}else msg=picked.error?:"No attachment selected" }},enabled=!preparing,icon=Icons.Rounded.AttachFile)
-            if(msg.isNotBlank())Text(msg,style=MaterialTheme.typography.bodySmall)
+            DseMessageFeedback(msg)
         }},
         confirmButton={PremiumPrimaryButton("Send Email",{scope.launch{
             if(canonicalType!=null&&attachmentBase64.isNullOrBlank()){msg="Canonical ERP PDF is required before this email can be sent";return@launch}

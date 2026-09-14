@@ -788,24 +788,51 @@ internal fun noticeKindFor(message:String):DseNoticeKind?{
     if(m.isBlank())return null
     val lower=m.lowercase()
     return when{
-        lower.startsWith("authentication failed")||lower.startsWith("permission denied")||lower.startsWith("conflict:")||lower.startsWith("not found:")||lower.startsWith("server error")||lower.startsWith("network error")||lower.startsWith("erp response")||lower.contains("unable to")||lower.contains("could not")||lower.contains(" failed")||lower.startsWith("failed") -> DseNoticeKind.ERROR
-        lower.contains("connection interrupted")||lower.contains("offline")&&lower.contains("not sent")||lower.contains("required")||lower.contains("cannot")||lower.contains("refuse") -> DseNoticeKind.WARNING
-        lower.startsWith("created ")||lower.startsWith("updated ")||lower.startsWith("saved ")||lower.startsWith("deleted")||lower.startsWith("cancelled")||lower.startsWith("approved")||lower.startsWith("rejected")||lower.startsWith("recorded")||lower.startsWith("sent")||lower.startsWith("attached")||lower.startsWith("duplicated")||lower.contains(" ready to share")||lower.contains(" successfully") -> DseNoticeKind.SUCCESS
+        lower.startsWith("authentication failed")||lower.startsWith("permission denied")||lower.startsWith("conflict:")||lower.startsWith("not found:")||lower.startsWith("server error")||lower.startsWith("network error")||lower.startsWith("erp response")||lower.contains("unable to")||lower.contains("could not")||lower.contains(" failed")||lower.startsWith("failed")||lower.contains("mismatch")||lower.contains("not ready")||lower.contains("no longer supported")||lower.contains("unavailable")||lower.contains("invalid") -> DseNoticeKind.ERROR
+        lower.contains("connection interrupted")||lower.contains("offline")&&lower.contains("not sent")||lower.contains("required")||lower.contains("cannot")||lower.contains("refuse")||lower.startsWith("optional mobile update")||lower.contains("attention required") -> DseNoticeKind.WARNING
+        lower.startsWith("created ")||lower.startsWith("updated ")||lower.startsWith("saved ")||lower.startsWith("deleted")||lower.startsWith("cancelled")||lower.startsWith("approved")||lower.startsWith("rejected")||lower.startsWith("recorded")||lower.startsWith("sent")||lower.startsWith("attached")||lower.startsWith("duplicated")||lower.contains(" ready to share")||lower.contains(" successfully")||lower.endsWith(" enabled")||lower.endsWith(" disabled")||lower.endsWith(" verified") -> DseNoticeKind.SUCCESS
         else -> null
     }
 }
 
 @Composable
 internal fun DseNoticeDialog(message:String,kind:DseNoticeKind,onDismiss:()->Unit){
-    val accent=when(kind){DseNoticeKind.SUCCESS->DseSuccess;DseNoticeKind.WARNING->DseWarning;DseNoticeKind.ERROR->DseDanger;DseNoticeKind.INFO->DseInfo}
-    val icon=when(kind){DseNoticeKind.SUCCESS->Icons.Rounded.CheckCircle;DseNoticeKind.WARNING->Icons.Rounded.WarningAmber;DseNoticeKind.ERROR->Icons.Rounded.ErrorOutline;DseNoticeKind.INFO->Icons.Rounded.Info}
-    val title=when(kind){DseNoticeKind.SUCCESS->"Completed";DseNoticeKind.WARNING->"Attention Required";DseNoticeKind.ERROR->"Unable to Complete Action";DseNoticeKind.INFO->"Information"}
-    PremiumAlertDialog(
-        onDismissRequest=onDismiss,
-        title={Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){Icon(icon,null,tint=accent);Text(title,fontWeight=FontWeight.ExtraBold,color=accent)}},
-        text={Text(message,style=MaterialTheme.typography.bodyMedium)},
-        confirmButton={PremiumPrimaryButton("Close",onDismiss,modifier=Modifier.widthIn(min=150.dp),leadingIcon=Icons.Rounded.Check)}
-    )
+    val dialogs=LocalUiDialogController.current
+    if(dialogs!=null){
+        LaunchedEffect(message,kind){
+            when(kind){
+                DseNoticeKind.ERROR->dialogs.error(message,onDismiss=onDismiss)
+                DseNoticeKind.WARNING->dialogs.warning(message,onDismiss=onDismiss)
+                DseNoticeKind.SUCCESS,DseNoticeKind.INFO->dialogs.information(message,if(kind==DseNoticeKind.SUCCESS)"Completed" else "Information",onDismiss)
+            }
+        }
+    }else{
+        val accent=when(kind){DseNoticeKind.SUCCESS->DseSuccess;DseNoticeKind.WARNING->DseWarning;DseNoticeKind.ERROR->DseDanger;DseNoticeKind.INFO->DseInfo}
+        val icon=when(kind){DseNoticeKind.SUCCESS->Icons.Rounded.CheckCircle;DseNoticeKind.WARNING->Icons.Rounded.WarningAmber;DseNoticeKind.ERROR->Icons.Rounded.ErrorOutline;DseNoticeKind.INFO->Icons.Rounded.Info}
+        val title=when(kind){DseNoticeKind.SUCCESS->"Completed";DseNoticeKind.WARNING->"Attention Required";DseNoticeKind.ERROR->"Unable to Complete Action";DseNoticeKind.INFO->"Information"}
+        PremiumAlertDialog(
+            onDismissRequest=onDismiss,
+            title={Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){Icon(icon,null,tint=accent);Text(title,fontWeight=FontWeight.ExtraBold,color=accent)}},
+            text={Text(message,style=MaterialTheme.typography.bodyMedium)},
+            confirmButton={PremiumPrimaryButton("Close",onDismiss,modifier=Modifier.widthIn(min=150.dp),leadingIcon=Icons.Rounded.Check)}
+        )
+    }
+}
+
+@Composable
+internal fun DseMessageFeedback(
+    message:String,
+    modifier:Modifier=Modifier,
+    inlineColor:Color=MaterialTheme.colorScheme.onSurfaceVariant,
+    maxLines:Int=2,
+){
+    if(message.isBlank())return
+    val kind=remember(message){noticeKindFor(message)}
+    if(kind!=null){
+        DseNoticeDialog(message,kind){}
+    }else{
+        Text(message,modifier=modifier,style=MaterialTheme.typography.bodySmall,color=inlineColor,maxLines=maxLines)
+    }
 }
 
 @Composable
@@ -994,7 +1021,7 @@ internal fun ActivityTimelineSheet(
             }
             when{
                 rows==null->LinearProgressIndicator(Modifier.fillMaxWidth())
-                !message.isBlank()->Text(message,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
+                !message.isBlank()->DseMessageFeedback(message)
                 rows!!.isEmpty()->DseEmptyRegisterState("No activity recorded yet","Server audit history for this record is currently empty.",Icons.Rounded.History)
                 else->rows!!.forEachIndexed{i,row->
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(10.dp)){
@@ -1058,17 +1085,34 @@ internal fun TextPromptDialog(title:String,label:String,initial:String="",onDism
 }
 
 @Composable
-internal fun ConfirmDialog(title:String,message:String,confirmLabel:String="Confirm",danger:Boolean=false,onDismiss:()->Unit,onConfirm:()->Unit){
-    val accent=if(danger)DseDanger else DseWarning
-    val icon=if(danger)Icons.Rounded.WarningAmber else Icons.Rounded.HelpOutline
-    PremiumAlertDialog(
-        onDismissRequest=onDismiss,
-        title={Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){Icon(icon,null,tint=accent);Text(title,fontWeight=FontWeight.ExtraBold,color=accent)}},
-        text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){Text(message);if(danger)Text("This action may change or remove ERP data.",style=MaterialTheme.typography.labelSmall,color=DseDanger,fontWeight=FontWeight.SemiBold)}},
-        confirmButton={if(danger)PremiumDangerButton(confirmLabel,onConfirm,icon=Icons.Rounded.Delete)else PremiumPrimaryButton(confirmLabel,onConfirm,leadingIcon=Icons.Rounded.Check)},
-        dismissButton={PremiumSecondaryButton("Cancel",onDismiss,icon=Icons.Rounded.Close)}
-    )
+private fun ConfirmDialogCore(title:String,message:String,confirmLabel:String,danger:Boolean,onDismiss:()->Unit,onConfirm:()->Unit,requiredPhrase:String?,requiredPhraseLabel:String?){
+    val dialogs=LocalUiDialogController.current
+    var fallbackPhrase by remember(title,message,requiredPhrase){mutableStateOf("")}
+    val phraseAccepted=requiredPhrase==null||fallbackPhrase==requiredPhrase
+    if(dialogs!=null){
+        LaunchedEffect(title,message,confirmLabel,danger,requiredPhrase,requiredPhraseLabel){
+            dialogs.confirmation(title,message,confirmLabel,danger,requiredPhrase,requiredPhraseLabel,onDismiss,onConfirm)
+        }
+    }else{
+        val accent=if(danger)DseDanger else DseWarning
+        val icon=if(danger)Icons.Rounded.WarningAmber else Icons.Rounded.HelpOutline
+        PremiumAlertDialog(
+            onDismissRequest=onDismiss,
+            title={Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){Icon(icon,null,tint=accent);Text(title,fontWeight=FontWeight.ExtraBold,color=accent)}},
+            text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){Text(message);if(danger)Text("This action may change or remove ERP data.",style=MaterialTheme.typography.labelSmall,color=DseDanger,fontWeight=FontWeight.SemiBold);requiredPhrase?.let{DseField(requiredPhraseLabel?:"Type $it",fallbackPhrase,singleLine=true,required=true,onValue={value->fallbackPhrase=value})}}},
+            confirmButton={if(danger)PremiumDangerButton(confirmLabel,onConfirm,enabled=phraseAccepted,icon=Icons.Rounded.Delete)else PremiumPrimaryButton(confirmLabel,onConfirm,enabled=phraseAccepted,leadingIcon=Icons.Rounded.Check)},
+            dismissButton={PremiumSecondaryButton("Cancel",onDismiss,icon=Icons.Rounded.Close)}
+        )
+    }
 }
+
+@Composable
+internal fun ConfirmDialog(title:String,message:String,confirmLabel:String="Confirm",danger:Boolean=false,onDismiss:()->Unit,onConfirm:()->Unit)=
+    ConfirmDialogCore(title,message,confirmLabel,danger,onDismiss,onConfirm,null,null)
+
+@Composable
+internal fun ConfirmDialog(title:String,message:String,confirmLabel:String,danger:Boolean,onDismiss:()->Unit,onConfirm:()->Unit,requiredPhrase:String,requiredPhraseLabel:String?=null)=
+    ConfirmDialogCore(title,message,confirmLabel,danger,onDismiss,onConfirm,requiredPhrase,requiredPhraseLabel)
 
 
 
