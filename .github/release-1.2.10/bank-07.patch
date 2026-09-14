@@ -1,0 +1,11 @@
+--- a/mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/BankFinanceScreens.kt
++++ b/mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/BankFinanceScreens.kt
+@@ -344,7 +402,7 @@
+                     "ignore" -> DseField("Ignore Reason", note, required=true, onValue = { note = it })
+                     "review" -> DseField("Review Note", note, onValue = { note = it })
+                     "note" -> {
+-                        Text("Notes are stored as a separate audit action so the financial Match remains atomic on Server v10.0.5.", style = MaterialTheme.typography.bodySmall)
++                        Text("Notes are stored as a separate audit action so the financial Match remains atomic on the ERP server.", style = MaterialTheme.typography.bodySmall)
+                         DseField("Transaction Note", note, required=true, onValue = { note = it })
+                     }
+                     "audit" -> DseSection("Audit History", Icons.Rounded.History) {
