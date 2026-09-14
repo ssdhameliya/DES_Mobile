@@ -234,6 +234,12 @@ object OfflineRepository {
         }
     }
 
+    fun biometricLoginEnabled(): Boolean = platformOfflineRead("settings.biometricLogin") == "true"
+
+    fun setBiometricLoginEnabled(enabled: Boolean) {
+        platformOfflineWrite("settings.biometricLogin", enabled.toString())
+    }
+
     fun widgetSharingEnabled(): Boolean = platformOfflineRead(scoped("settings.widgetSharing")) == "true"
 
     fun setWidgetSharingEnabled(enabled: Boolean) {

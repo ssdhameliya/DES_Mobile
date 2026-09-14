@@ -6,12 +6,12 @@ data class MobileRuntimeConfig(
     val blockedServerHost: String,
     val serverEditingAllowed: Boolean,
     val updateApkBaseUrl: String,
-    val installedVersionName: String = "1.2.7",
+    val installedVersionName: String = "1.2.8",
 )
 
 object MobileBuildInfo {
     const val APP_NAME = "Jasvi Industries Mobile"
-    private const val FALLBACK_MOBILE_VERSION_NAME = "1.2.7"
+    private const val FALLBACK_MOBILE_VERSION_NAME = "1.2.8"
     val MOBILE_VERSION_NAME: String get() = runtimeConfig.installedVersionName.trim().ifBlank { FALLBACK_MOBILE_VERSION_NAME }
     val MOBILE_VERSION: String get() = "$MOBILE_VERSION_NAME-V10.0.7-DISTRIBUTION"
     const val SERVER_BASELINE = "10.0.7"

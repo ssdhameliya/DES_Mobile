@@ -33,7 +33,7 @@ enum class MainTab(val label:String){DASHBOARD("Dashboard"),SALES("Sales"),PURCH
 enum class MoreDestination(val label:String){PURCHASE("Purchase"),QUOTATIONS("Quotations"),SALES_RETURNS("Sales Returns"),PURCHASE_RETURNS("Purchase Returns"),MASTERS("Master Data"),INVENTORY("Inventory"),PURCHASE_RECON("Purchase Reconciliation"),COMMUNICATIONS("Communication Center"),REMINDERS("Reminders"),NOTIFICATIONS("Notifications"),REPORTS("Reports"),PROFILE("Profile & Password"),ADMIN("User Access & Roles"),IMPORT("Data Import"),SYNC("Sync Center"),ABOUT("About")}
 private enum class RootPage { STARTUP,LOGIN,MFA,APP }
 
-data class RecordTarget(val moduleKey:String,val reference:String="",val recordId:Long?=null)
+data class RecordTarget(val moduleKey:String,val reference:String="",val recordId:Long?=null,val openActions:Boolean=false)
 
 data class PermissionContext(val user:UserPayload?,val permissions:List<EffectivePermission>){
     private val admin:Boolean get()=user?.role.equals("ADMIN",true)
@@ -45,11 +45,11 @@ data class PermissionContext(val user:UserPayload?,val permissions:List<Effectiv
  DseErpTheme{
   val sessions=remember{platformSessionStore()};var api by remember{mutableStateOf<DseErpHttpClient?>(null)};var root by remember{mutableStateOf(RootPage.STARTUP)}
   var serverUrl by remember{mutableStateOf(normalizeInitialServerUrl(platformLoadLastServerUrl()))};var user by remember{mutableStateOf<UserPayload?>(null)};var permissions by remember{mutableStateOf<List<EffectivePermission>>(emptyList())}
-  var saved by remember{mutableStateOf(sessions.accessToken()?.isNotBlank()==true)};val biometric=remember{platformBiometricAvailable()};var challenge by remember{mutableStateOf("")};var destination by remember{mutableStateOf("")};var message by remember{mutableStateOf("")};var resetOpen by remember{mutableStateOf(false)};var registerOpen by remember{mutableStateOf(false)}
+  var saved by remember{mutableStateOf(sessions.accessToken()?.isNotBlank()==true)};val biometric=platformBiometricAvailable();var challenge by remember{mutableStateOf("")};var destination by remember{mutableStateOf("")};var message by remember{mutableStateOf("")};var resetOpen by remember{mutableStateOf(false)};var registerOpen by remember{mutableStateOf(false)}
   DisposableEffect(api){val a=api;onDispose{a?.close()}}
   when(root){
    RootPage.STARTUP->StartupScreen(serverUrl){startupMessage->message=startupMessage;root=RootPage.LOGIN}
-   RootPage.LOGIN->LoginScreen(serverUrl,{serverUrl=it},message,saved&&biometric,{identity,password->
+   RootPage.LOGIN->LoginScreen(serverUrl,{serverUrl=it},message,saved&&biometric&&OfflineRepository.biometricLoginEnabled(),{identity,password->
     val a=DseErpHttpClient(serverUrl,sessions);api?.close();api=a
     when(val runtime=a.runtimeHealth()){
      is ApiResult.Success->{BusinessDateContext.update(runtime.value.businessDate,runtime.value.businessZone);val incompat=runtimeCompatibilityProblem(runtime.value);if(incompat!=null)message=incompat else when(val r=a.login(identity.trim(),password)){
@@ -211,11 +211,15 @@ private fun friendlyLoginMessage(message:String):String{
  PremiumBackdrop{
   BoxWithConstraints(Modifier.fillMaxSize()){
    val wide=maxWidth>700.dp
-   Row(
-    Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).imePadding().navigationBarsPadding().padding(horizontal=if(wide)48.dp else 18.dp,vertical=18.dp),
-    horizontalArrangement=Arrangement.Center,
-    verticalAlignment=Alignment.CenterVertically,
+   val viewportHeight=maxHeight
+   Column(
+    Modifier.fillMaxSize().imePadding().navigationBarsPadding().verticalScroll(rememberScrollState()),
    ){
+    Row(
+     Modifier.fillMaxWidth().heightIn(min=viewportHeight).padding(horizontal=if(wide)48.dp else 18.dp,vertical=18.dp),
+     horizontalArrangement=Arrangement.Center,
+     verticalAlignment=Alignment.CenterVertically,
+    ){
     if(wide){
      Column(Modifier.widthIn(max=390.dp).padding(end=42.dp),verticalArrangement=Arrangement.spacedBy(18.dp)){
       DseBrandMark()
@@ -310,6 +314,7 @@ private fun friendlyLoginMessage(message:String):String{
      }
     }
    }
+  }
   }
  }
 

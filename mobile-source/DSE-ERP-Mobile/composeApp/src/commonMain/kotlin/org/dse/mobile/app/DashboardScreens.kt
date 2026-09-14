@@ -110,7 +110,8 @@ internal fun DashboardScreen(
                     amount=money(r.amount),
                     statuses=listOf("Module" to r.type),
                     meta=r.date,
-                    onActions={onTarget(RecordTarget(r.type,r.number))},
+                    swipeEndActions=listOf(SwipeAction("Actions",Icons.Rounded.MoreHoriz){onTarget(RecordTarget(r.type,r.number,openActions=true))}),
+                    onActions={onTarget(RecordTarget(r.type,r.number,openActions=true))},
                 ){onTarget(RecordTarget(r.type,r.number))}
             }
         }
