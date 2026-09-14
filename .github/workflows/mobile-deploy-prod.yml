@@ -180,5 +180,5 @@ jobs:
             echo "- Version: $VERSION"
             echo "- Version code: $VERSION_CODE"
             echo '- PROD APK was built only after explicit manual GitHub approval.'
-            echo '- Server publication to the production mobile update URL is a separate deployment step until its upload path is wired into this workflow.'
+            echo '- Next: run Mobile PROD Server Deploy for the same stable tag after the one-time PROD server bootstrap has passed.'
           } >> "$GITHUB_STEP_SUMMARY"
