@@ -1,0 +1,65 @@
+name: Apply Mobile 1.2.10 integration
+
+on:
+  push:
+    branches:
+      - release/mobile-1.2.10-desktop-10.0.9
+    paths:
+      - .github/workflows/apply-mobile-1.2.10-integration.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v4
+        with:
+          ref: release/mobile-1.2.10-desktop-10.0.9
+          fetch-depth: 0
+
+      - name: Apply verified integration patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          patches=(
+            .github/release-1.2.10/App.kt.patch
+            .github/release-1.2.10/bank-01.patch
+            .github/release-1.2.10/bank-02.patch
+            .github/release-1.2.10/bank-03.patch
+            .github/release-1.2.10/bank-04.patch
+            .github/release-1.2.10/bank-05.patch
+            .github/release-1.2.10/bank-06.patch
+            .github/release-1.2.10/bank-07.patch
+            .github/release-1.2.10/bank-08.patch
+            .github/release-1.2.10/DocumentScreens.kt.patch
+            .github/release-1.2.10/ReturnScreens.kt.patch
+          )
+          for patch in "${patches[@]}"; do
+            git apply --check "$patch"
+            git apply "$patch"
+          done
+
+      - name: Verify Mobile source contract
+        shell: bash
+        working-directory: mobile-source/DSE-ERP-Mobile
+        run: |
+          set -euo pipefail
+          python scripts/verify-android-source.py
+
+      - name: Commit integrated source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/App.kt \
+            mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/BankFinanceScreens.kt \
+            mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/DocumentScreens.kt \
+            mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/ReturnScreens.kt
+          git diff --cached --check
+          git commit -m "Integrate Desktop 10.0.9 linkage for Mobile 1.2.10"
+          git push origin HEAD:release/mobile-1.2.10-desktop-10.0.9
