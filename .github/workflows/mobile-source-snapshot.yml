@@ -1,0 +1,23 @@
+name: Mobile Source Snapshot
+
+on:
+  push:
+    branches:
+      - fix/mobile-1.2.9-auth-bank-salesperson
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Upload mobile IntelliJ source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: DSE-ERP-Mobile-source
+          path: mobile-source/DSE-ERP-Mobile
+          include-hidden-files: true
+          retention-days: 1
