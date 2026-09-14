@@ -1,0 +1,22 @@
+--- a/mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/BankFinanceScreens.kt
++++ b/mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/BankFinanceScreens.kt
+@@ -71,15 +80,16 @@
+         DseRecordActionSheet("Finance ${r.voucherNo}","Bank & Expense actions",buildList{
+             add(PremiumActionSpec("View Finance Entry",{loadFull(r){selected=it}}))
+             if(p.can("BANK_EXPENSE","EDIT"))add(PremiumActionSpec("Edit Finance Entry",{loadFull(r){editor=it}},enabled=!r.reconciled,disabledReason="Reconciled entries are locked to protect the bank audit trail."))
+-            if(r.linkedDocumentNo?.isNotBlank()==true)add(PremiumActionSpec("Open Linked ERP",{platformOpenExternalUrl("dseerp://${linkedRoute(r.linkedTargetType)}/${encodeBank(r.linkedDocumentNo.orEmpty())}")}))
++            if(r.statementTransactionId!=null)add(PremiumActionSpec("Open Bank Statement",{openBankStatement(r)},icon=Icons.Rounded.AccountBalance))
++            if(r.linkedTargetId!=null&&!r.linkedTargetType.isNullOrBlank())add(PremiumActionSpec("Open Linked ERP",{openLinkedErp(r)}))
+             if(p.can("BANK_EXPENSE","DELETE"))add(PremiumActionSpec("Delete Finance Entry",{loadFull(r){confirm=it}},destructive=true,enabled=!r.reconciled,disabledReason="Reconciled entries cannot be deleted."))
+         },{actionTarget=null})
+     }
+     if(filterOpen)FinanceFilterDialog(filter,{filterOpen=false}){filter=it;page=0;filterOpen=false}
+-    selected?.let{r->DetailDialog("Finance ${r.voucherNo}",{selected=null},{Column(verticalArrangement=Arrangement.spacedBy(8.dp)){detailFinanceRows(r);if(!r.billPath.isNullOrBlank())Text("Bill / Proof: ${r.billPath}",style=MaterialTheme.typography.bodySmall);Text("Actions",fontWeight=FontWeight.SemiBold);PremiumActionGrid(buildList{if(!r.reconciled&&p.can("BANK_EXPENSE","EDIT"))add(PremiumActionSpec("Edit",{editor=r;selected=null}));if(!r.reconciled&&p.can("BANK_EXPENSE","DELETE"))add(PremiumActionSpec("Delete",{confirm=r;selected=null},true));if(r.linkedDocumentNo?.isNotBlank()==true)add(PremiumActionSpec("Open Linked ERP",{platformOpenExternalUrl("dseerp://${linkedRoute(r.linkedTargetType)}/${encodeBank(r.linkedDocumentNo.orEmpty())}")}))})}})}
++    selected?.let{r->DetailDialog("Finance ${r.voucherNo}",{selected=null},{Column(verticalArrangement=Arrangement.spacedBy(8.dp)){detailFinanceRows(r);if(!r.billPath.isNullOrBlank())Text("Bill / Proof: ${r.billPath}",style=MaterialTheme.typography.bodySmall);Text("Actions",fontWeight=FontWeight.SemiBold);PremiumActionGrid(buildList{if(!r.reconciled&&p.can("BANK_EXPENSE","EDIT"))add(PremiumActionSpec("Edit",{editor=r;selected=null}));if(!r.reconciled&&p.can("BANK_EXPENSE","DELETE"))add(PremiumActionSpec("Delete",{confirm=r;selected=null},true));if(r.statementTransactionId!=null)add(PremiumActionSpec("Open Bank Statement",{openBankStatement(r)}));if(r.linkedTargetId!=null&&!r.linkedTargetType.isNullOrBlank())add(PremiumActionSpec("Open Linked ERP",{openLinkedErp(r)}))})}})}
+     if(creating)FinanceEditorDialog(api,null,{creating=false}){rec->scope.launch{save(rec,true)}}
+     editor?.let{old->FinanceEditorDialog(api,old,{editor=null}){rec->scope.launch{save(rec,false)}}
+-    confirm?.let{r->ConfirmDialog("Delete Finance Entry","Delete ${r.voucherNo}? Reconciled/linked entries are protected by the v10.0.5 server.","Delete",true,{confirm=null}){scope.launch{when(val x=api.deleteFinance(r.id?:0,r.rowVersion)){is ApiResult.Success->{msg=x.value.message;confirm=null;refresh++};else->msg=x.readableMessage()}}}}
++    confirm?.let{r->ConfirmDialog("Delete Finance Entry","Delete ${r.voucherNo}? Reconciled/linked entries are protected by the ERP server.","Delete",true,{confirm=null}){scope.launch{when(val x=api.deleteFinance(r.id?:0,r.rowVersion)){is ApiResult.Success->{msg=x.value.message;confirm=null;refresh++};else->msg=x.readableMessage()}}}}
+ }
+ 
+ @Composable
