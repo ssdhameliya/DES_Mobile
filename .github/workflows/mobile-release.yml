@@ -92,16 +92,21 @@ jobs:
                 }
               fi
             else
-              if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-                echo "Release $TAG already exists for commit $TAG_COMMIT. Bump versionName/versionCode before the next UAT release." >&2
-                exit 1
-              fi
               git merge-base --is-ancestor "$TAG_COMMIT" "$HEAD_COMMIT" || {
                 echo "Existing tag $TAG is not an ancestor of current main; refusing to move it." >&2
                 exit 1
               }
-              TAG_STATE="replace-stale"
               OLD_TAG_COMMIT="$TAG_COMMIT"
+              if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+                IS_PRERELEASE="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq '.isPrerelease')"
+                [[ "$IS_PRERELEASE" == 'true' ]] || {
+                  echo "Release $TAG is already stable/PROD. Bump versionName/versionCode before another UAT release." >&2
+                  exit 1
+                }
+                TAG_STATE="replace-uat"
+              else
+                TAG_STATE="replace-stale"
+              fi
             fi
           fi
 
@@ -149,6 +154,14 @@ jobs:
           EOF
           chmod 600 "$KEYSTORE" "$HOME/.gradle/gradle.properties"
 
+      - name: Run shared contract tests
+        working-directory: mobile-source/DSE-ERP-Mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :shared:jvmTest --console=plain
+
       - name: Build signed UAT APK
         working-directory: mobile-source/DSE-ERP-Mobile
         shell: bash
@@ -188,6 +201,15 @@ jobs:
               gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 && { echo "A release appeared for $TAG; refusing to replace tag." >&2; exit 1; }
               git fetch origin "refs/tags/$TAG:refs/tags/$TAG" --force
               [[ "$(git rev-list -n 1 "$TAG")" == "$OLD_TAG_COMMIT" ]] || { echo 'Stale tag changed during build.' >&2; exit 1; }
+              git tag -d "$TAG"
+              git tag -a "$TAG" "$MAIN_COMMIT" -m "Mobile UAT $VERSION"
+              git push --force origin "refs/tags/$TAG"
+              ;;
+            replace-uat)
+              IS_PRERELEASE="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq '.isPrerelease')"
+              [[ "$IS_PRERELEASE" == 'true' ]] || { echo "Release $TAG became stable during the build; refusing to move its tag." >&2; exit 1; }
+              git fetch origin "refs/tags/$TAG:refs/tags/$TAG" --force
+              [[ "$(git rev-list -n 1 "$TAG")" == "$OLD_TAG_COMMIT" ]] || { echo 'UAT tag changed during build.' >&2; exit 1; }
               git tag -d "$TAG"
               git tag -a "$TAG" "$MAIN_COMMIT" -m "Mobile UAT $VERSION"
               git push --force origin "refs/tags/$TAG"
