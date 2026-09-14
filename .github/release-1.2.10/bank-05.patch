@@ -1,0 +1,18 @@
+--- a/mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/BankFinanceScreens.kt
++++ b/mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/BankFinanceScreens.kt
+@@ -161,12 +218,12 @@
+                     add(PremiumActionSpec("Mark as Ignored",{openTransaction(t,"ignore")},icon=Icons.Rounded.Block))
+                 }
+                 "MATCHED"->if(canRecon){
+-                    add(PremiumActionSpec("View Match / Linked Record",{if(linked)platformOpenExternalUrl("dseerp://${linkedRoute(t.linkedTargetType)}/${encodeBank(t.linkedDocumentNo.orEmpty())}") else openTransaction(t,"audit")},enabled=linked,disabledReason="Linked ERP record is not available.",icon=Icons.Rounded.Link))
+-                    if(t.linkedTargetType.equals("BANK_ENTRY",true))add(PremiumActionSpec("View Bank Entry",{platformOpenExternalUrl("dseerp://${linkedRoute(t.linkedTargetType)}/${encodeBank(t.linkedDocumentNo.orEmpty())}")},enabled=linked,disabledReason="Linked bank entry is not available.",icon=Icons.Rounded.AccountBalance))
++                    add(PremiumActionSpec("View Match / Linked Record",{if(linked)openLinked(t) else openTransaction(t,"audit")},enabled=linked,disabledReason="Linked ERP record is not available.",icon=Icons.Rounded.Link))
++                    if(t.linkedTargetType.equals("BANK_ENTRY",true))add(PremiumActionSpec("View Bank Entry",{routeLinked(t.linkedTargetType,t.linkedTargetId,t.linkedDocumentNo,t.financeEntryId,"Bank Statement #${t.id}")},enabled=linked,disabledReason="Linked bank entry is not available.",icon=Icons.Rounded.AccountBalance))
+                     add(PremiumActionSpec("Unmatch / Reverse",{reverseTransaction(t,"Reconciliation reversed")},destructive=true,icon=Icons.Rounded.Undo))
+                 }
+                 "EXPENSE"->if(canRecon){
+-                    add(PremiumActionSpec("View Expense",{if(linked)platformOpenExternalUrl("dseerp://${linkedRoute(t.linkedTargetType)}/${encodeBank(t.linkedDocumentNo.orEmpty())}") else openTransaction(t,"audit")},enabled=linked,disabledReason="Linked expense is not available.",icon=Icons.Rounded.ReceiptLong))
++                    add(PremiumActionSpec("View Expense",{if(linked)routeLinked("EXPENSE",t.linkedTargetId,t.linkedDocumentNo,t.financeEntryId,"Bank Statement #${t.id}") else openTransaction(t,"audit")},enabled=linked,disabledReason="Linked expense is not available.",icon=Icons.Rounded.ReceiptLong))
+                     add(PremiumActionSpec("Unmatch / Reverse",{reverseTransaction(t,"Expense reconciliation reversed")},destructive=true,icon=Icons.Rounded.Undo))
+                 }
+                 "IGNORED"->if(canRecon)add(PremiumActionSpec("Return to Unmatched",{reverseTransaction(t,"Transaction returned to unmatched")},icon=Icons.Rounded.Undo))
