@@ -30,6 +30,11 @@ jobs:
             tail -n +3 "$part_file" >> /tmp/bank-all.patch
             if [ -n "$(tail -c 1 "$part_file")" ]; then printf '\n' >> /tmp/bank-all.patch; fi
           done
+          echo "Bank source blob: $(git hash-object mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/BankFinanceScreens.kt)"
+          echo "Combined patch bytes: $(wc -c < /tmp/bank-all.patch)"
+          echo "Combined patch SHA256: $(sha256sum /tmp/bank-all.patch | awk '{print $1}')"
+          test "$(git hash-object mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/BankFinanceScreens.kt)" = "ca5a23461a5e7a1e8414090ad766915ec28e9c26"
+          test "$(sha256sum /tmp/bank-all.patch | awk '{print $1}')" = "d290aaed931525dde677ea1f8d3fa82686446617fd76ed54b4092d8031680caa"
           git apply --check .github/release-1.2.10/App.kt.patch
           git apply .github/release-1.2.10/App.kt.patch
           git apply --check /tmp/bank-all.patch
