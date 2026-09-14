@@ -1,0 +1,43 @@
+--- a/mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/ReturnScreens.kt
++++ b/mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/ReturnScreens.kt
+@@ -50,11 +50,20 @@
+     var filterOpen by remember{mutableStateOf(false)}
+     val scope=rememberCoroutineScope()
+ 
+-    LaunchedEffect(openTarget?.moduleKey,openTarget?.reference){
++    LaunchedEffect(openTarget?.moduleKey,openTarget?.reference,openTarget?.action){
+         val t=openTarget;val keys=if(sales)setOf("SALES_RETURN","SALE_RETURN") else setOf("PURCHASE_RETURN")
+         if(t!=null&&t.moduleKey.uppercase() in keys&&t.reference.isNotBlank()){
+             when(val r=api.returnDetails(t.reference)){
+-                is ApiResult.Success->{val d=r.value;details=d;selected=ReturnSummary(no=d.no,date=d.date,invoice=d.invoice,party=d.party,total=d.total,refund=d.refund,status=d.status,refundStatus=d.refundStatus);onTargetConsumed()}
++                is ApiResult.Success->{
++                    val d=r.value
++                    val summary=ReturnSummary(no=d.no,date=d.date,invoice=d.invoice,party=d.party,total=d.total,refund=d.refund,status=d.status,refundStatus=d.refundStatus)
++                    if(t.action==LinkedRecordAction.REFUND){
++                        val remaining=(d.total-d.refund).coerceAtLeast(0.0)
++                        if(d.status.equals("APPROVED",true)&&remaining>0.005&&p.can(module,"EDIT")) refund=d
++                        else { details=d;selected=summary;msg=when{!d.status.equals("APPROVED",true)->"Refund is available after the Return is approved.";remaining<=0.005->"This Return is already fully refunded.";else->"You do not have permission to record this refund."} }
++                    } else { details=d;selected=summary }
++                    onTargetConsumed()
++                }
+                 else->{msg=r.readableMessage();onTargetConsumed()}
+             }
+         }
+@@ -149,7 +158,7 @@
+     edit?.let{d->ReturnNotesDialog(api,d,{edit=null}){msg=it;edit=null;refresh++}}
+     attach?.let{d->ReturnAttachmentDialog(api,d,{attach=null}){msg=it;attach=null;refresh++}}
+     confirm?.let{(action,r)->
+-        if(action=="delete")TypedDeleteDialog("Delete Return","Type DELETE to permanently delete ${r.no}. The v10.0.5 server will preserve audit/integrity and reverse stock only when allowed.",{confirm=null}){scope.launch{when(val x=api.deleteReturn(r.no,sales)){is ApiResult.Success->{msg=x.value.message;confirm=null;refresh++};else->msg=x.readableMessage()}}}
++        if(action=="delete")TypedDeleteDialog("Delete Return","Type DELETE to permanently delete ${r.no}. The ERP server will preserve audit/integrity and reverse stock only when allowed.",{confirm=null}){scope.launch{when(val x=api.deleteReturn(r.no,sales)){is ApiResult.Success->{msg=x.value.message;confirm=null;refresh++};else->msg=x.readableMessage()}}}
+         else ConfirmDialog("Cancel Return","Cancel ${r.no}? The server will reject cancellation if refund, stock or lifecycle rules make it unsafe.","Cancel Return",true,{confirm=null}){scope.launch{when(val x=api.cancelReturn(r.no,sales)){is ApiResult.Success->{msg=x.value.message;confirm=null;refresh++};else->msg=x.readableMessage()}}}
+     }
+ }
+@@ -175,7 +184,7 @@
+                     val description=sourceRows.mapNotNull{it.itemDescription?.takeIf(String::isNotBlank)}.distinct().joinToString(" / ").ifBlank{code}
+                     drafts+=ReturnLineDraft(code,description,sourceRows.size,rates.singleOrNull(),invoiced,previously,(invoiced-previously).coerceAtLeast(0.0))
+                 }
+-                msg="Return eligibility follows the v10.0.5 API contract at item-code level. When the same item appears on multiple invoice lines, Mobile combines those lines and the server allocates the returned quantity across the original invoice snapshots in its authoritative order. Return amount is calculated by the server."
++                msg="Return eligibility follows the certified ERP API contract at item-code level. When the same item appears on multiple invoice lines, Mobile combines those lines and the server allocates the returned quantity across the original invoice snapshots in its authoritative order. Return amount is calculated by the server."
+             }
+             else->msg=r.readableMessage()
+         }
