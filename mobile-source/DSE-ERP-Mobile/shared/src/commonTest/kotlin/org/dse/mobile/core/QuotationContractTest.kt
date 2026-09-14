@@ -3,6 +3,7 @@ package org.dse.mobile.core
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import org.dse.mobile.core.model.QuotationLine
 import org.dse.mobile.core.model.QuotationRecord
