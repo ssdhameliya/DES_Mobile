@@ -48,7 +48,7 @@
          when(val health=api.health()){
 -            is ApiResult.NetworkError->{if(create){msg="ERP is offline. New Purchases are kept on screen and are not queued automatically because v10.0.5 has no idempotency key. Reconnect and press Save again."}else{OfflineRepository.enqueuePurchase(record,false);msg="Pending Local Sync — this row-versioned Purchase update was not sent because ERP is offline.";editor=null}}
 +            is ApiResult.NetworkError->{if(create){msg="ERP is offline. New Purchases are kept on screen and are not queued automatically because the current ERP API does not expose an idempotency key for this create operation. Reconnect and press Save again."}else{OfflineRepository.enqueuePurchase(record,false);msg="Pending Local Sync — this row-versioned Purchase update was not sent because ERP is offline.";editor=null}}
-             is ApiResult.Success->{val result=if(create)api.createPurchase(record)else api.updatePurchase(record);when(result){is ApiResult.Success->{msg="${if(create)"Created" else "Updated"} ${result.value.invoiceNo} • ${money(result.value.totalAmount,result.value.currency?.substringBefore(' ')?:("INR"))}";creating=false;editor=null;refresh++};else->msg=result.readableMessage()}}
+             is ApiResult.Success->{val result=if(create)api.createPurchase(record)else api.updatePurchase(record);when(result){is ApiResult.Success->{msg="${if(create)"Created" else "Updated"} ${result.value.invoiceNo} • ${money(result.value.totalAmount,result.value.currency?.substringBefore(' ')?:"INR")}";creating=false;editor=null;refresh++};else->msg=result.readableMessage()}}
              else->msg=health.readableMessage()
          }
      }
