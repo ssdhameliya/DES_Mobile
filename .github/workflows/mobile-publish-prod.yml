@@ -1,0 +1,218 @@
+name: Mobile PROD Server Deploy
+run-name: Mobile PROD deploy ${{ inputs.tag }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Stable production tag to publish, for example v1.2.7'
+        required: true
+        type: string
+      confirm_prod_deploy:
+        description: 'I confirm this stable PROD APK should be published to the production mobile update URL'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-prod-server-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Publish approved PROD APK to server
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SSH_HOST: ${{ secrets.DSE_SSH_HOST }}
+      SSH_USER: ${{ secrets.DSE_SSH_USER }}
+      SSH_KEY: ${{ secrets.DSE_SSH_PRIVATE_KEY }}
+      SSH_KNOWN_HOSTS: ${{ secrets.DSE_SSH_KNOWN_HOSTS }}
+      SSH_PORT: ${{ vars.DSE_SSH_PORT }}
+      SSH_DEPLOY_ENABLED: ${{ vars.DSE_MOBILE_PROD_DEPLOY_ENABLED }}
+      PUBLIC_BASE_URL: https://api.jasviindustries.in/mobile/android/prod
+      PUBLIC_HEALTH_URL: https://api.jasviindustries.in/api/runtime/health
+    steps:
+      - name: Require explicit PROD deployment approval
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ '${{ inputs.confirm_prod_deploy }}' == 'true' ]] || {
+            echo 'PROD deployment confirmation was not approved.' >&2
+            exit 1
+          }
+          [[ "${SSH_DEPLOY_ENABLED:-}" == 'true' ]] || {
+            echo 'DSE_MOBILE_PROD_DEPLOY_ENABLED must be true after the one-time PROD server bootstrap succeeds.' >&2
+            exit 1
+          }
+          RAW='${{ inputs.tag }}'
+          [[ "$RAW" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "Tag must look exactly like vX.Y.Z: $RAW" >&2
+            exit 1
+          }
+          VERSION="${RAW#v}"
+          echo "TAG=$RAW" >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Checkout deployment scripts
+        uses: actions/checkout@v6
+
+      - name: Validate stable PROD release and assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          IS_PRERELEASE="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq '.isPrerelease')"
+          [[ "$IS_PRERELEASE" == 'false' ]] || {
+            echo "Release $TAG must exist and be a stable production release." >&2
+            exit 1
+          }
+
+          ASSETS="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
+          grep -Fxq "Jasvi-Mobile-${VERSION}-PROD.apk" <<<"$ASSETS" || {
+            echo "Missing PROD APK asset for $TAG" >&2
+            exit 1
+          }
+          grep -Fxq "Jasvi-Mobile-${VERSION}-PROD.apk.sha256" <<<"$ASSETS" || {
+            echo "Missing PROD checksum asset for $TAG" >&2
+            exit 1
+          }
+
+      - name: Download exact PROD release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p deploy-artifacts
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --dir deploy-artifacts \
+            --pattern "Jasvi-Mobile-${VERSION}-PROD.apk" \
+            --pattern "Jasvi-Mobile-${VERSION}-PROD.apk.sha256"
+
+          APK="deploy-artifacts/Jasvi-Mobile-${VERSION}-PROD.apk"
+          SHA_FILE="$APK.sha256"
+          EXPECTED_SHA="$(awk 'NR==1 {print tolower($1)}' "$SHA_FILE")"
+          ACTUAL_SHA="$(sha256sum "$APK" | awk '{print tolower($1)}')"
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{64}$ ]] || { echo 'Invalid release checksum file.' >&2; exit 1; }
+          [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" ]] || {
+            echo "Downloaded PROD APK checksum mismatch: expected=$EXPECTED_SHA actual=$ACTUAL_SHA" >&2
+            exit 1
+          }
+          echo "EXPECTED_SHA=$EXPECTED_SHA" >> "$GITHUB_ENV"
+
+      - name: Verify existing public PROD API health
+        shell: bash
+        run: |
+          set -euo pipefail
+          BODY="$(curl --fail --silent --show-error --max-time 20 "$PUBLIC_HEALTH_URL")"
+          python3 - "$BODY" <<'PY'
+          import json,sys
+          r=json.loads(sys.argv[1])
+          env=str(r.get('environment','')).upper()
+          if r.get('ready') is not True or env not in {'PROD','PRODUCTION'}:
+              raise SystemExit(f'Unexpected PROD health before deployment: {r}')
+          print('PRE_DEPLOY_PROD_HEALTH_OK')
+          PY
+
+      - name: Validate SSH configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in SSH_HOST SSH_USER SSH_KEY SSH_KNOWN_HOSTS; do
+            [[ -n "${!name:-}" ]] || { echo "Missing GitHub production environment SSH secret: $name" >&2; exit 1; }
+          done
+          echo "SSH_PORT=${SSH_PORT:-22}" >> "$GITHUB_ENV"
+
+      - name: Configure strict SSH host verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/dse_mobile_deploy_key
+          chmod 600 ~/.ssh/dse_mobile_deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload PROD APK to server staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/dse_mobile_deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=yes \
+            "$SSH_USER@$SSH_HOST" 'mkdir -p /tmp/dse-mobile-ci-deploy-prod'
+          scp -i ~/.ssh/dse_mobile_deploy_key -P "$SSH_PORT" -o StrictHostKeyChecking=yes \
+            "deploy-artifacts/Jasvi-Mobile-${VERSION}-PROD.apk" \
+            "deploy-artifacts/Jasvi-Mobile-${VERSION}-PROD.apk.sha256" \
+            scripts/mobile/deploy-mobile-apk.sh \
+            "$SSH_USER@$SSH_HOST:/tmp/dse-mobile-ci-deploy-prod/"
+
+      - name: Install PROD APK on server
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/dse_mobile_deploy_key -p "$SSH_PORT" -o StrictHostKeyChecking=yes \
+            "$SSH_USER@$SSH_HOST" \
+            "bash /tmp/dse-mobile-ci-deploy-prod/deploy-mobile-apk.sh prod /tmp/dse-mobile-ci-deploy-prod/Jasvi-Mobile-${VERSION}-PROD.apk /tmp/dse-mobile-ci-deploy-prod/Jasvi-Mobile-${VERSION}-PROD.apk.sha256 '${VERSION}'"
+
+      - name: Verify public PROD APK and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          PUBLIC_APK="$PUBLIC_BASE_URL/Jasvi-Mobile-${VERSION}-PROD.apk"
+          PUBLIC_SHA="$PUBLIC_APK.sha256"
+
+          curl --fail --location --silent --show-error --max-time 120 "$PUBLIC_APK" -o published-prod.apk
+          ACTUAL_SHA="$(sha256sum published-prod.apk | awk '{print tolower($1)}')"
+          [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" ]] || {
+            echo "Public PROD APK checksum mismatch: expected=$EXPECTED_SHA actual=$ACTUAL_SHA" >&2
+            exit 1
+          }
+
+          SHA_BODY="$(curl --fail --silent --show-error --max-time 20 "$PUBLIC_SHA")"
+          PUBLISHED_SHA="$(printf '%s\n' "$SHA_BODY" | awk 'NR==1 {print tolower($1)}')"
+          [[ "$PUBLISHED_SHA" == "$EXPECTED_SHA" ]] || {
+            echo "Public PROD checksum file mismatch: expected=$EXPECTED_SHA published=$PUBLISHED_SHA" >&2
+            exit 1
+          }
+          echo "MOBILE_PROD_PUBLICATION_OK version=$VERSION sha256=$EXPECTED_SHA"
+
+      - name: Verify PROD API remained healthy
+        shell: bash
+        run: |
+          set -euo pipefail
+          BODY="$(curl --fail --silent --show-error --max-time 20 "$PUBLIC_HEALTH_URL")"
+          python3 - "$BODY" <<'PY'
+          import json,sys
+          r=json.loads(sys.argv[1])
+          env=str(r.get('environment','')).upper()
+          if r.get('ready') is not True or env not in {'PROD','PRODUCTION'}:
+              raise SystemExit(f'Unexpected PROD health after deployment: {r}')
+          print('POST_DEPLOY_PROD_HEALTH_OK')
+          PY
+
+      - name: Clean remote PROD upload staging
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f ~/.ssh/dse_mobile_deploy_key ]]; then
+            ssh -i ~/.ssh/dse_mobile_deploy_key -p "${SSH_PORT:-22}" -o StrictHostKeyChecking=yes \
+              "$SSH_USER@$SSH_HOST" 'rm -rf /tmp/dse-mobile-ci-deploy-prod' || true
+          fi
+
+      - name: PROD deployment summary
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo '### Mobile PROD server deployment complete'
+            echo "- Tag: $TAG"
+            echo "- Version: $VERSION"
+            echo "- SHA-256: $EXPECTED_SHA"
+            echo '- Exact stable GitHub PROD assets were published to the PROD server.'
+            echo '- Public APK and checksum were downloaded again over HTTPS and verified.'
+            echo '- PROD API health passed before and after deployment.'
+            echo '- UAT was not touched.'
+          } >> "$GITHUB_STEP_SUMMARY"
