@@ -44,7 +44,7 @@ private fun ImportModule.supportsStrategy()=this in setOf(ImportModule.ITEMS,Imp
    PremiumSecondaryButton(if(clearing)"Confirm Clear Cache" else "Clear Cache",{if(clearing){OfflineRepository.clearCache();clearing=false;refresh();msg="Offline read cache cleared"}else clearing=true},Modifier.fillMaxWidth(),icon=Icons.Rounded.DeleteSweep)
   }
   DseSection("Pending Local Sync",Icons.Rounded.Sync){
-   Text("CREATE retries are manual because the current v10.0.5 contract does not expose an idempotency key for every write. This prevents silent duplicate documents.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+   Text("CREATE retries are manual because the current ERP API contract does not expose an idempotency key for every write. This prevents silent duplicate documents.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
    if(queue.isEmpty())Text("No pending local changes",color=DseSuccess,fontWeight=FontWeight.SemiBold) else queue.forEach{item->
     PremiumCard(Modifier.fillMaxWidth(),padding=11.dp){
      Text(item.label,fontWeight=FontWeight.Bold)
@@ -59,11 +59,11 @@ private fun ImportModule.supportsStrategy()=this in setOf(ImportModule.ITEMS,Imp
   }
   DseSection("${platformName()} System Experience",if(platformName()=="Android") Icons.Rounded.PhoneAndroid else Icons.Rounded.PhoneIphone){
    Text(platformPushCapability(),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-   PremiumPrimaryButton("Enable Notifications",{scope.launch{val x=platformRequestPushNotifications();msg=if(x.granted)"${platformName()} notification permission enabled. Jasvi Industries v10.0.5 does not expose device-token registration, so remote ERP push delivery is not claimed by this build." else x.message}},Modifier.fillMaxWidth(),leadingIcon=Icons.Rounded.NotificationsActive)
+   PremiumPrimaryButton("Enable Notifications",{scope.launch{val x=platformRequestPushNotifications();msg=if(x.granted)"${platformName()} notification permission enabled. The current ERP API does not expose device-token registration, so remote ERP push delivery is not claimed by this build." else x.message}},Modifier.fillMaxWidth(),leadingIcon=Icons.Rounded.NotificationsActive)
    Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){Switch(widget,{widget=it;OfflineRepository.setWidgetSharingEnabled(it);if(!it)platformPublishWidgetSnapshot(WidgetDashboardSnapshot(updatedAtMillis=platformOfflineNowMillis()))});Text("Share authenticated dashboard KPIs with ${platformName()} widget")}
    Text("Widgets and shortcuts are read-only presentation features and never alter business document state.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
   }
-  if(msg.isNotBlank())Surface(shape=MaterialTheme.shapes.medium,color=MaterialTheme.colorScheme.primaryContainer.copy(.45f),modifier=Modifier.fillMaxWidth()){Text(msg,Modifier.padding(11.dp),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+  DseMessageFeedback(msg,modifier=Modifier.fillMaxWidth())
  }
 }
 
