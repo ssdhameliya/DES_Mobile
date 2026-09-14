@@ -79,11 +79,13 @@ checks={
  'androidApp module': 'include(":androidApp")' in (root/'settings.gradle.kts').read_text(),
  'AGP app plugin': 'com.android.application' in (root/'build.gradle.kts').read_text(),
  'KMP Android plugin': 'com.android.kotlin.multiplatform.library' in (root/'build.gradle.kts').read_text(),
- '10.0.7 baseline': 'SERVER_BASELINE = "10.0.7"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
- 'mobile 1.2.8': 'MOBILE_VERSION_NAME = "1.2.8"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
+ '10.0.9 baseline': 'SERVER_BASELINE = "10.0.9"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
+ 'mobile 1.2.10': 'FALLBACK_MOBILE_VERSION_NAME = "1.2.10"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
  'server-driven mobile policy': (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileCompatibility.kt').is_file(),
  '10.0.1 runtime floor': 'MINIMUM_COMPATIBLE_SERVER_VERSION = "10.0.1"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
  'API revision bearer v5': 'EXPECTED_API_REVISION = "spring-security-bearer-v5"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
+ 'desktop 10.0.9 linkage resolver': (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/model/DesktopLinkage.kt').is_file(),
+ 'desktop linkage contract tests': (root/'shared/src/commonTest/kotlin/org/dse/mobile/core/DesktopLinkageContractTest.kt').is_file(),
 }
 android_gradle=(root/'androidApp/build.gradle.kts').read_text()
 distribution_checks={
@@ -107,7 +109,7 @@ for key,value in checks.items():
 health_model=(root/'shared/src/commonMain/kotlin/org/dse/mobile/core/model/AuthModels.kt').read_text()
 for field in ['minimumSupportedDesktopVersion','latestDesktopVersion','minimumSupportedAndroidVersion','latestAndroidVersion','minimumSupportedIosVersion','latestIosVersion','environment','databaseName','utcTime','dateFormat','timePolicy']:
     ok=f'val {field}:' in health_model
-    print(f'10.0.7 runtime health field {field}: {"OK" if ok else "FAIL"}')
+    print(f'10.0.9 runtime health field {field}: {"OK" if ok else "FAIL"}')
     failed |= not ok
 
 app_text=(root/'composeApp/src/commonMain/kotlin/org/dse/mobile/app/App.kt').read_text()
@@ -118,6 +120,27 @@ print(f'actual connected server version UI: {"OK" if actual_version_ui else "FAI
 print(f'10s startup runtime-health timeout: {"OK" if startup_timeout else "FAIL"}')
 print(f'server-driven optional/required mobile update policy: {"OK" if server_mobile_policy else "FAIL"}')
 failed |= not actual_version_ui or not startup_timeout or not server_mobile_policy
+
+ui_dialog_text=(root/'composeApp/src/commonMain/kotlin/org/dse/mobile/app/UiDialogState.kt').read_text() if (root/'composeApp/src/commonMain/kotlin/org/dse/mobile/app/UiDialogState.kt').is_file() else ''
+auth_coordinator_text=(root/'composeApp/src/commonMain/kotlin/org/dse/mobile/app/AuthenticationCoordinator.kt').read_text() if (root/'composeApp/src/commonMain/kotlin/org/dse/mobile/app/AuthenticationCoordinator.kt').is_file() else ''
+dialog_auth_checks={
+ 'central UiDialogState.Error': 'data class Error(' in ui_dialog_text,
+ 'central UiDialogState.Warning': 'data class Warning(' in ui_dialog_text,
+ 'central UiDialogState.Confirmation': 'data class Confirmation(' in ui_dialog_text,
+ 'central UiDialogState.Information': 'data class Information(' in ui_dialog_text,
+ 'single root dialog renderer': 'CompositionLocalProvider(LocalUiDialogController provides dialogs)' in app_text and 'UiDialogRenderer(dialogs)' in app_text,
+ 'ConfirmDialog routed to root controller': 'dialogs.confirmation(title,message,confirmLabel,danger,requiredPhrase,requiredPhraseLabel,onDismiss,onConfirm)' in (root/'composeApp/src/commonMain/kotlin/org/dse/mobile/app/DseComponents.kt').read_text(),
+ 'typed destructive confirmation centralized': 'requiredPhrase: String? = null' in ui_dialog_text and 'typedPhrase by remember(dialog)' in ui_dialog_text,
+ 'shared authentication coordinator': 'class AuthenticationCoordinator' in auth_coordinator_text and 'completeAuthorizedSession(' in auth_coordinator_text,
+ 'password uses coordinator': 'authCoordinator.authenticatePassword' in app_text,
+ 'biometric uses coordinator after device proof': 'platformAuthenticateBiometric("Unlock Jasvi Industries Mobile")' in app_text and 'authCoordinator.authenticateBiometricSession' in app_text,
+ 'MFA uses coordinator': 'authCoordinator.authenticateMfa' in app_text,
+ 'auth profile linkage': 'api.currentProfile()' in auth_coordinator_text and 'sameErpUser(' in auth_coordinator_text,
+ 'auth permission validation': 'api.effectivePermissions()' in auth_coordinator_text,
+}
+for key,value in dialog_auth_checks.items():
+    print(f'{key}: {"OK" if value else "FAIL"}')
+    failed |= not value
 
 forbidden=[
     'iOS System Experience',

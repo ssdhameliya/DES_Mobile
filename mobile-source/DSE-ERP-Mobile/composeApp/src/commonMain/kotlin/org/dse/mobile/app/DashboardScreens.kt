@@ -202,7 +202,7 @@ private fun QuickActionTile(label:String,icon:androidx.compose.ui.graphics.vecto
                 keyboardOptions=KeyboardOptions(imeAction=ImeAction.Search),
                 keyboardActions=KeyboardActions(onSearch={focusManager.clearFocus();scope.launch{searchNow()}}),
             )
-            Text(msg,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            DseMessageFeedback(msg)
             if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
             if(!busy&&q.trim().length>=2&&rows.isEmpty()){
                 Surface(shape=androidx.compose.foundation.shape.RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.surfaceVariant.copy(.35f),modifier=Modifier.fillMaxWidth()){

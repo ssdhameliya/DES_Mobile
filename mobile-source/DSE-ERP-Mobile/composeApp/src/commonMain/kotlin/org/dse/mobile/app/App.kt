@@ -33,7 +33,14 @@ enum class MainTab(val label:String){DASHBOARD("Dashboard"),SALES("Sales"),PURCH
 enum class MoreDestination(val label:String){PURCHASE("Purchase"),QUOTATIONS("Quotations"),SALES_RETURNS("Sales Returns"),PURCHASE_RETURNS("Purchase Returns"),MASTERS("Master Data"),INVENTORY("Inventory"),PURCHASE_RECON("Purchase Reconciliation"),COMMUNICATIONS("Communication Center"),REMINDERS("Reminders"),NOTIFICATIONS("Notifications"),REPORTS("Reports"),PROFILE("Profile & Password"),ADMIN("User Access & Roles"),IMPORT("Data Import"),SYNC("Sync Center"),ABOUT("About")}
 private enum class RootPage { STARTUP,LOGIN,MFA,APP }
 
-data class RecordTarget(val moduleKey:String,val reference:String="",val recordId:Long?=null,val openActions:Boolean=false)
+data class RecordTarget(
+ val moduleKey:String,
+ val reference:String="",
+ val recordId:Long?=null,
+ val openActions:Boolean=false,
+ val action:LinkedRecordAction=LinkedRecordAction.VIEW,
+ val source:String="",
+)
 
 data class PermissionContext(val user:UserPayload?,val permissions:List<EffectivePermission>){
     private val admin:Boolean get()=user?.role.equals("ADMIN",true)
@@ -43,34 +50,146 @@ data class PermissionContext(val user:UserPayload?,val permissions:List<Effectiv
 
 @Composable fun App(){
  DseErpTheme{
-  val sessions=remember{platformSessionStore()};var api by remember{mutableStateOf<DseErpHttpClient?>(null)};var root by remember{mutableStateOf(RootPage.STARTUP)}
-  var serverUrl by remember{mutableStateOf(normalizeInitialServerUrl(platformLoadLastServerUrl()))};var user by remember{mutableStateOf<UserPayload?>(null)};var permissions by remember{mutableStateOf<List<EffectivePermission>>(emptyList())}
-  var saved by remember{mutableStateOf(sessions.accessToken()?.isNotBlank()==true)};val biometric=platformBiometricAvailable();var challenge by remember{mutableStateOf("")};var destination by remember{mutableStateOf("")};var message by remember{mutableStateOf("")};var resetOpen by remember{mutableStateOf(false)};var registerOpen by remember{mutableStateOf(false)}
-  DisposableEffect(api){val a=api;onDispose{a?.close()}}
-  when(root){
-   RootPage.STARTUP->StartupScreen(serverUrl){startupMessage->message=startupMessage;root=RootPage.LOGIN}
-   RootPage.LOGIN->LoginScreen(serverUrl,{serverUrl=it},message,saved&&biometric&&OfflineRepository.biometricLoginEnabled(),{identity,password->
-    val a=DseErpHttpClient(serverUrl,sessions);api?.close();api=a
-    when(val runtime=a.runtimeHealth()){
-     is ApiResult.Success->{BusinessDateContext.update(runtime.value.businessDate,runtime.value.businessZone);val incompat=runtimeCompatibilityProblem(runtime.value);if(incompat!=null)message=incompat else when(val r=a.login(identity.trim(),password)){
-      is ApiResult.Success->if(!r.value.success)message=r.value.message.ifBlank{"Login failed"} else if(r.value.mfaRequired){user=r.value.user;challenge=r.value.challengeId.orEmpty();destination=r.value.maskedDestination.orEmpty();root=RootPage.MFA}else{user=r.value.user;when(val perms=a.effectivePermissions()){is ApiResult.Success->{permissions=perms.value;activateOffline(serverUrl,user,permissions);platformSaveLastServerUrl(serverUrl);saved=sessions.accessToken()?.isNotBlank()==true;message="Connected to Jasvi Industries ${runtime.value.version}";root=RootPage.APP};else->{message="Login succeeded, but permissions could not be loaded safely. ${perms.readableMessage()}";a.logout();sessions.clear();saved=false}}}
-      else->message=r.readableMessage()
-     }}
-     else->message="Server contract check failed. ${runtime.readableMessage()}"
+  val dialogs=remember{UiDialogController()}
+  CompositionLocalProvider(LocalUiDialogController provides dialogs){
+   val sessions=remember{platformSessionStore()}
+   val authCoordinator=remember(sessions){AuthenticationCoordinator(sessions)}
+   var api by remember{mutableStateOf<DseErpHttpClient?>(null)}
+   var root by remember{mutableStateOf(RootPage.STARTUP)}
+   var serverUrl by remember{mutableStateOf(normalizeInitialServerUrl(platformLoadLastServerUrl()))}
+   var user by remember{mutableStateOf<UserPayload?>(null)}
+   var permissions by remember{mutableStateOf<List<EffectivePermission>>(emptyList())}
+   var saved by remember{mutableStateOf(sessions.accessToken()?.isNotBlank()==true)}
+   val biometric=platformBiometricAvailable()
+   var challenge by remember{mutableStateOf("")}
+   var destination by remember{mutableStateOf("")}
+   var message by remember{mutableStateOf("")}
+   var resetOpen by remember{mutableStateOf(false)}
+   var registerOpen by remember{mutableStateOf(false)}
+
+   fun applyAuthenticationResult(result:AuthenticationResult){
+    when(result){
+     is AuthenticationResult.Authorized->{
+      user=result.user
+      permissions=result.permissions
+      platformSaveLastServerUrl(serverUrl)
+      saved=sessions.accessToken()?.isNotBlank()==true
+      message=result.message
+      root=RootPage.APP
+      if(result.offlineReadOnly)dialogs.warning(result.message,"Offline Read Mode")
+     }
+     is AuthenticationResult.MfaRequired->{
+      user=result.user
+      challenge=result.challengeId
+      destination=result.maskedDestination
+      message=result.message
+      root=RootPage.MFA
+     }
+     is AuthenticationResult.Rejected->{
+      message=result.message
+      if(result.clearStoredSession){sessions.clear();saved=false;root=RootPage.LOGIN}
+      dialogs.error(result.message)
+     }
     }
-   },{val probe=DseErpHttpClient(serverUrl,InMemorySessionStore());val r=probe.runtimeHealth();probe.close();message=when(r){is ApiResult.Success->{BusinessDateContext.update(r.value.businessDate,r.value.businessZone);runtimeCompatibilityProblem(r.value)?:mobileOptionalUpdateNotice(r.value)?.let{"Connected: ${r.value.service} ${r.value.version} • $it"}?:"Connected: ${r.value.service} ${r.value.version} • ${r.value.message}"};else->r.readableMessage()}},{
-    val auth=platformAuthenticateBiometric("Unlock Jasvi Industries Mobile")
-    if(!auth.success)message=auth.message.ifBlank{"Biometric unlock was not completed"} else {val a=DseErpHttpClient(serverUrl,sessions);api?.close();api=a;val runtime=a.runtimeHealth();(runtime as? ApiResult.Success)?.value?.let{BusinessDateContext.update(it.businessDate,it.businessZone)};val incompat=(runtime as? ApiResult.Success)?.value?.let(::runtimeCompatibilityProblem);if(incompat!=null)message=incompat else if(runtime !is ApiResult.Success&&runtime !is ApiResult.NetworkError)message="Server contract check failed. ${runtime.readableMessage()}" else when(val p=a.currentProfile()){
-      is ApiResult.Success->{user=p.value.toUserPayload();when(val perms=a.effectivePermissions()){is ApiResult.Success->{permissions=perms.value;activateOffline(serverUrl,user,permissions);message="Unlocked securely";root=RootPage.APP};else->{message="Could not validate permissions. ${perms.readableMessage()}";a.logout();sessions.clear();saved=false}}}
-      is ApiResult.NetworkError->{val cached=OfflineRepository.readAuthSnapshot(serverUrl);if(cached!=null){user=cached.user;permissions=cached.permissions;OfflineRepository.activateScope("$serverUrl|${cached.user.username}");message="Offline read mode • permissions last validated ${cacheAgeLabel(cached.validatedAtMillis)}";root=RootPage.APP}else message="Server offline and no validated offline profile is available"}
-      else->{if(p is ApiResult.Unauthorized){sessions.clear();saved=false};message=p.readableMessage()}
-    }}
-   },{resetOpen=true},{registerOpen=true})
-   RootPage.MFA->MfaScreen(destination,message,{root=RootPage.LOGIN},{scopeMessage->message=scopeMessage},{scopeChallenge,scopeDestination->challenge=scopeChallenge;if(scopeDestination.isNotBlank())destination=scopeDestination},{val a=api;if(a==null){message="Authentication session is unavailable";null}else when(val r=a.resendMfa(challenge)){is ApiResult.Success->{if(r.value.success){message=r.value.message.ifBlank{"Verification code resent"};Pair(r.value.challengeId.ifBlank{challenge},r.value.maskedDestination.orEmpty())}else{message=r.value.message;null}};else->{message=r.readableMessage();null}}},{otp->val a=api?:return@MfaScreen;when(val r=a.completeMfa(challenge,otp.trim())){is ApiResult.Success->if(r.value.success&&!r.value.mfaRequired){user=r.value.user?:user;when(val perms=a.effectivePermissions()){is ApiResult.Success->{permissions=perms.value;activateOffline(serverUrl,user,permissions);saved=true;message="MFA verified";root=RootPage.APP};else->{message="MFA succeeded, but permissions could not be validated. ${perms.readableMessage()}";a.logout();sessions.clear();saved=false;root=RootPage.LOGIN}}}else message=r.value.message;else->message=r.readableMessage()}})
-   RootPage.APP->{val a=api;if(a==null)Text("Session unavailable")else MainApp(a,PermissionContext(user,permissions),message){a.logout();OfflineRepository.clearAuthSnapshot(serverUrl);OfflineRepository.clearScopeData();OfflineRepository.deactivateScope();a.close();api=null;user=null;permissions=emptyList();saved=false;message="Signed out securely; cached ERP data for this session was cleared";root=RootPage.LOGIN}}
+   }
+
+   DisposableEffect(api){val a=api;onDispose{a?.close()}}
+   when(root){
+    RootPage.STARTUP->StartupScreen(serverUrl){startupMessage->
+     message=startupMessage
+     root=RootPage.LOGIN
+     dialogs.showBusinessMessage(startupMessage)
+    }
+    RootPage.LOGIN->LoginScreen(
+     server=serverUrl,
+     onServer={serverUrl=it},
+     message=message,
+     biometricReady=saved&&biometric&&OfflineRepository.biometricLoginEnabled(),
+     onLogin={identity,password->
+      val a=DseErpHttpClient(serverUrl,sessions);api?.close();api=a
+      applyAuthenticationResult(authCoordinator.authenticatePassword(a,serverUrl,identity,password))
+     },
+     onHealth={
+      val probe=DseErpHttpClient(serverUrl,InMemorySessionStore())
+      val result=probe.runtimeHealth()
+      probe.close()
+      message=when(result){
+       is ApiResult.Success->{
+        BusinessDateContext.update(result.value.businessDate,result.value.businessZone)
+        val incompat=runtimeCompatibilityProblem(result.value)
+        if(incompat!=null){dialogs.error(incompat);incompat}
+        else mobileOptionalUpdateNotice(result.value)?.let{notice->dialogs.warning(notice);"Connected: ${result.value.service} ${result.value.version} • $notice"}
+         ?:"Connected: ${result.value.service} ${result.value.version} • ${result.value.message}"
+       }
+       else->{val text=result.readableMessage();dialogs.error(text);text}
+      }
+     },
+     onBiometric={
+      val deviceProof=platformAuthenticateBiometric("Unlock Jasvi Industries Mobile")
+      if(!deviceProof.success){
+       val text=deviceProof.message.ifBlank{"Biometric unlock was not completed"}
+       message=text
+       dialogs.error(text,"Biometric Verification")
+      }else{
+       val a=DseErpHttpClient(serverUrl,sessions);api?.close();api=a
+       applyAuthenticationResult(authCoordinator.authenticateBiometricSession(a,serverUrl))
+      }
+     },
+     onForgot={resetOpen=true},
+     onRegister={registerOpen=true},
+    )
+    RootPage.MFA->MfaScreen(
+     destination=destination,
+     message=message,
+     onBack={root=RootPage.LOGIN},
+     onMessage={scopeMessage->message=scopeMessage;dialogs.showBusinessMessage(scopeMessage)},
+     onChallenge={scopeChallenge,scopeDestination->challenge=scopeChallenge;if(scopeDestination.isNotBlank())destination=scopeDestination},
+     onResend={
+      val a=api
+      if(a==null){
+       val text="Authentication session is unavailable"
+       message=text;dialogs.error(text);null
+      }else when(val r=a.resendMfa(challenge)){
+       is ApiResult.Success->{
+        if(r.value.success){
+         val text=r.value.message.ifBlank{"Verification code resent"}
+         message=text;dialogs.information(text,"Verification Code")
+         Pair(r.value.challengeId.ifBlank{challenge},r.value.maskedDestination.orEmpty())
+        }else{message=r.value.message;dialogs.error(r.value.message);null}
+       }
+       else->{val text=r.readableMessage();message=text;dialogs.error(text);null}
+      }
+     },
+     onVerify={otp->
+      val a=api
+      if(a==null){
+       val text="Authentication session is unavailable"
+       message=text;dialogs.error(text)
+      }else applyAuthenticationResult(authCoordinator.authenticateMfa(a,serverUrl,challenge,otp,user))
+     },
+    )
+    RootPage.APP->{
+     val a=api
+     if(a==null)Text("Session unavailable") else MainApp(a,PermissionContext(user,permissions),message){
+      a.logout()
+      OfflineRepository.clearAuthSnapshot(serverUrl)
+      OfflineRepository.clearScopeData()
+      OfflineRepository.deactivateScope()
+      a.close();api=null;user=null;permissions=emptyList();saved=false
+      message="Signed out securely; cached ERP data for this session was cleared"
+      root=RootPage.LOGIN
+      dialogs.information(message,"Signed Out")
+     }
+    }
+   }
+   if(resetOpen)PasswordResetDialog(serverUrl,{resetOpen=false}){doneMessage->
+    message=doneMessage;resetOpen=false;dialogs.information(doneMessage,"Password Reset")
+   }
+   if(registerOpen)RegistrationDialog(serverUrl,{registerOpen=false}){doneMessage->
+    message=doneMessage;registerOpen=false;dialogs.information(doneMessage,"Registration")
+   }
+   UiDialogRenderer(dialogs)
   }
-  if(resetOpen)PasswordResetDialog(serverUrl,{resetOpen=false}){message=it;resetOpen=false}
-  if(registerOpen)RegistrationDialog(serverUrl,{registerOpen=false}){message=it;registerOpen=false}
  }
 }
 
@@ -86,7 +205,7 @@ private fun normalizeInitialServerUrl(saved:String?):String{
  }
 }
 
-private fun runtimeCompatibilityProblem(status:RuntimeHealthResponse):String?{
+internal fun runtimeCompatibilityProblem(status:RuntimeHealthResponse):String?{
  val baseProblem=when{
   !status.ready->"Jasvi Industries server is not ready: ${status.message.ifBlank{"database health check failed"}}"
   status.service!=MobileBuildInfo.EXPECTED_SERVER_SERVICE->"This address is not the expected Jasvi Industries server (${status.service.ifBlank{"unknown service"}})."
@@ -120,8 +239,6 @@ private fun compareServerVersion(actual:String,minimum:String):Int{
  for(i in 0 until n){val av=a.getOrElse(i){0};val bv=b.getOrElse(i){0};if(av!=bv)return av.compareTo(bv)}
  return 0
 }
-
-private fun activateOffline(server:String,user:UserPayload?,permissions:List<EffectivePermission>){OfflineRepository.activateScope("$server|${user?.username.orEmpty()}");user?.let{OfflineRepository.saveAuthSnapshot(server,it,permissions)}}
 
 @Composable private fun StartupScreen(server:String,onComplete:(String)->Unit){
  var status by remember{mutableStateOf("Preparing your secure workspace")}
@@ -278,14 +395,7 @@ private fun friendlyLoginMessage(message:String):String{
      )
 
      if(feedback.isNotBlank()&&!positive){
-      val container=if(errorLike)MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant
-      val content=if(errorLike)MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant
-      Surface(color=container,shape=androidx.compose.foundation.shape.RoundedCornerShape(16.dp),modifier=Modifier.fillMaxWidth()){
-       Row(Modifier.padding(11.dp),verticalAlignment=Alignment.Top,horizontalArrangement=Arrangement.spacedBy(8.dp)){
-        Icon(if(errorLike)Icons.Rounded.ErrorOutline else Icons.Rounded.Info,null,modifier=Modifier.size(18.dp),tint=content)
-        Text(feedback,color=content,style=MaterialTheme.typography.bodySmall)
-       }
-      }
+      DseMessageFeedback(feedback,modifier=Modifier.fillMaxWidth())
      }
 
      if(updateVersion!=null&&platformName().equals("Android",true)){
@@ -351,7 +461,7 @@ private fun friendlyLoginMessage(message:String):String{
      Spacer(Modifier.width(8.dp));Text("Verify & Continue")
     }
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){TextButton(enabled=!busy,onClick=onBack){Text("Back")};TextButton(enabled=!busy,onClick={scope.launch{busy=true;val update=onResend();if(update!=null)onChallenge(update.first,update.second);busy=false}}){Text("Resend code")}}
-    if(message.isNotBlank())Surface(color=MaterialTheme.colorScheme.surfaceVariant.copy(.55f),shape=androidx.compose.foundation.shape.RoundedCornerShape(14.dp),modifier=Modifier.fillMaxWidth()){Text(message,Modifier.padding(10.dp),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+    DseMessageFeedback(message,modifier=Modifier.fillMaxWidth())
    }
   }
  }
@@ -363,14 +473,14 @@ private fun friendlyLoginMessage(message:String):String{
  PremiumAlertDialog(onDismissRequest=onClose,title={Text("Reset Password")},text={Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
   if(challenge.isBlank()){
    DseField("Username / email",identity,singleLine=true,required=true,onValue={identity=it})
-   Text("Jasvi Industries 10.0.5 sends a verification code to the registered email.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+   Text("Jasvi Industries 10.0.9 sends a verification code to the registered email.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
   } else {
    DseField("Email Verification Code",otp,singleLine=true,required=true,onValue={otp=it})
    DseField("Authenticator Code",totp,singleLine=true,supporting="Required when MFA is enrolled for this account",onValue={totp=it})
    DsePasswordField("New Password",password,required=true,onValue={password=it})
    DsePasswordField("Confirm Password",confirm,required=true,onValue={confirm=it})
   }
-  if(msg.isNotBlank())Text(msg,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+  DseMessageFeedback(msg)
  }},confirmButton={Button(enabled=!busy&&if(challenge.isBlank())identity.isNotBlank() else otp.isNotBlank()&&password.length>=8&&password==confirm,onClick={scope.launch{
   busy=true
   if(challenge.isBlank())when(val r=client.requestPasswordReset(identity)){
@@ -411,7 +521,7 @@ private fun friendlyLoginMessage(message:String):String{
      DseField("Answer",captchaAnswer,singleLine=true,required=true,icon=Icons.Rounded.VerifiedUser,onValue={captchaAnswer=it})
      TextButton(enabled=!busy,onClick={scope.launch{refreshCaptcha()}}){Icon(Icons.Rounded.Refresh,null);Spacer(Modifier.width(6.dp));Text("Refresh CAPTCHA")}
     }}
-    Text("Jasvi Industries 10.0.5 requires email verification, authenticator enrollment and administrator approval before first sign-in.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    Text("Jasvi Industries 10.0.9 requires email verification, authenticator enrollment and administrator approval before first sign-in.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
    }
    2->{
     Text("Email verification",style=MaterialTheme.typography.titleMedium)
@@ -428,7 +538,7 @@ private fun friendlyLoginMessage(message:String):String{
     Text("After verification, the account remains pending until an administrator approves it.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
    }
   }
-  if(msg.isNotBlank()&&stage!=3)Text(msg,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+  if(stage!=3)DseMessageFeedback(msg)
  }},confirmButton={Button(
   enabled=!busy&&when(stage){1->username.isNotBlank()&&fullName.isNotBlank()&&email.contains("@")&&role.isNotBlank()&&captcha?.challengeId?.isNotBlank()==true&&captchaAnswer.isNotBlank();2->emailOtp.isNotBlank()&&password.length>=8&&password==confirm;else->authenticatorOtp.length>=6},
   onClick={scope.launch{
@@ -484,6 +594,10 @@ private fun friendlyLoginMessage(message:String):String{
    "CUSTOMER","SUPPLIER","PARTY","MASTER"->{tab=MainTab.MORE;more=MoreDestination.MASTERS}
    else->{tab=MainTab.MORE;more=MoreDestination.MASTERS}
   }
+ }
+ fun routeTarget(target:RecordTarget){
+  routeModule(target.moduleKey)
+  recordTarget=target
  }
  fun routeDeepLink(raw:String){
   val withoutScheme=raw.substringAfter("://",raw).substringBefore('?').trim('/')
@@ -565,10 +679,10 @@ private fun friendlyLoginMessage(message:String):String{
     Row(Modifier.padding(horizontal=10.dp,vertical=7.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(7.dp)){Icon(Icons.Rounded.Info,null,Modifier.size(16.dp),tint=MaterialTheme.colorScheme.primary);Text(banner,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
    }
    when(tab){
-    MainTab.DASHBOARD->DashboardScreen(api,permission,{if(allowed(it))tab=it},{dest->tab=MainTab.MORE;more=dest},{globalSearch=true},{target->routeModule(target.moduleKey);recordTarget=target})
+    MainTab.DASHBOARD->DashboardScreen(api,permission,{if(allowed(it))tab=it},{dest->tab=MainTab.MORE;more=dest},{globalSearch=true},::routeTarget)
     MainTab.SALES->if(permission.can("SALES"))SalesWorkspace(api,permission,permission.user?.username.orEmpty(),recordTarget,{recordTarget=null}) else PermissionDenied("Sales")
     MainTab.PURCHASE->if(permission.can("PURCHASE"))PurchaseWorkspace(api,permission,permission.user?.username.orEmpty(),recordTarget,{recordTarget=null}) else PermissionDenied("Purchase")
-    MainTab.BANK->if(allowed(MainTab.BANK))BankFinanceWorkspace(api,permission,permission.user?.username.orEmpty(),recordTarget,{recordTarget=null}) else PermissionDenied("Bank & Finance")
+    MainTab.BANK->if(allowed(MainTab.BANK))BankFinanceWorkspace(api,permission,permission.user?.username.orEmpty(),recordTarget,{recordTarget=null},::routeTarget) else PermissionDenied("Bank & Finance")
     MainTab.IMPORT->if(allowed(MainTab.IMPORT))DataImportWorkspace(api,permission.user?.username.orEmpty()) else PermissionDenied("Data Import")
     MainTab.MORE->MoreWorkspace(api,permission,permission.user?.username.orEmpty(),more,{more=it},{routeDeepLink(it)},recordTarget,{recordTarget=null})
    }
@@ -582,5 +696,4 @@ private fun friendlyLoginMessage(message:String):String{
 @Composable private fun ConnectionChip(online:Boolean?){val icon=when(online){true->Icons.Rounded.CloudDone;false->Icons.Rounded.CloudOff;null->Icons.Rounded.Sync};Icon(icon,when(online){true->"Online";false->"Offline";null->"Checking"},tint=if(online==false)MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)}
 private fun tabIcon(t:MainTab)=when(t){MainTab.DASHBOARD->Icons.Rounded.Dashboard;MainTab.SALES->Icons.Rounded.ReceiptLong;MainTab.PURCHASE->Icons.Rounded.ShoppingCart;MainTab.BANK->Icons.Rounded.AccountBalance;MainTab.IMPORT->Icons.Rounded.UploadFile;MainTab.MORE->Icons.Rounded.MoreHoriz}
 private fun displayName(u:UserPayload?)=u?.fullName?.takeIf{it.isNotBlank()}?:u?.username.orEmpty()
-private fun UserProfile.toUserPayload()=UserPayload(id=id,username=username,fullName=fullName,role=role,email=email,active=active,department=department,branch=branch,accessLevel=accessLevel,locked=locked,mfaEnabled=mfaEnabled)
-private fun cacheAgeLabel(last:Long):String{val min=((platformOfflineNowMillis()-last).coerceAtLeast(0)/60_000);return when{min<1->"just now";min<60->"$min min ago";min<1440->"${min/60} hr ago";else->"${min/1440} day(s) ago"}}
+internal fun cacheAgeLabel(last:Long):String{val min=((platformOfflineNowMillis()-last).coerceAtLeast(0)/60_000);return when{min<1->"just now";min<60->"$min min ago";min<1440->"${min/60} hr ago";else->"${min/1440} day(s) ago"}}

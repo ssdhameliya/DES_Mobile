@@ -50,11 +50,20 @@ internal fun ReturnsWorkspace(api:DseErpHttpClient,p:PermissionContext,sales:Boo
     var filterOpen by remember{mutableStateOf(false)}
     val scope=rememberCoroutineScope()
 
-    LaunchedEffect(openTarget?.moduleKey,openTarget?.reference){
+    LaunchedEffect(openTarget?.moduleKey,openTarget?.reference,openTarget?.action){
         val t=openTarget;val keys=if(sales)setOf("SALES_RETURN","SALE_RETURN") else setOf("PURCHASE_RETURN")
         if(t!=null&&t.moduleKey.uppercase() in keys&&t.reference.isNotBlank()){
             when(val r=api.returnDetails(t.reference)){
-                is ApiResult.Success->{val d=r.value;details=d;selected=ReturnSummary(no=d.no,date=d.date,invoice=d.invoice,party=d.party,total=d.total,refund=d.refund,status=d.status,refundStatus=d.refundStatus);onTargetConsumed()}
+                is ApiResult.Success->{
+                    val d=r.value
+                    val summary=ReturnSummary(no=d.no,date=d.date,invoice=d.invoice,party=d.party,total=d.total,refund=d.refund,status=d.status,refundStatus=d.refundStatus)
+                    if(t.action==LinkedRecordAction.REFUND){
+                        val remaining=(d.total-d.refund).coerceAtLeast(0.0)
+                        if(d.status.equals("APPROVED",true)&&remaining>0.005&&p.can(module,"EDIT")) refund=d
+                        else { details=d;selected=summary;msg=when{!d.status.equals("APPROVED",true)->"Refund is available after the Return is approved.";remaining<=0.005->"This Return is already fully refunded.";else->"You do not have permission to record this refund."} }
+                    } else { details=d;selected=summary }
+                    onTargetConsumed()
+                }
                 else->{msg=r.readableMessage();onTargetConsumed()}
             }
         }
@@ -149,7 +158,7 @@ internal fun ReturnsWorkspace(api:DseErpHttpClient,p:PermissionContext,sales:Boo
     edit?.let{d->ReturnNotesDialog(api,d,{edit=null}){msg=it;edit=null;refresh++}}
     attach?.let{d->ReturnAttachmentDialog(api,d,{attach=null}){msg=it;attach=null;refresh++}}
     confirm?.let{(action,r)->
-        if(action=="delete")TypedDeleteDialog("Delete Return","Type DELETE to permanently delete ${r.no}. The v10.0.5 server will preserve audit/integrity and reverse stock only when allowed.",{confirm=null}){scope.launch{when(val x=api.deleteReturn(r.no,sales)){is ApiResult.Success->{msg=x.value.message;confirm=null;refresh++};else->msg=x.readableMessage()}}}
+        if(action=="delete")ConfirmDialog("Delete Return","Permanently delete ${r.no}? The ERP server will preserve audit/integrity and reverse stock only when allowed.","Delete",true,{confirm=null},{scope.launch{when(val x=api.deleteReturn(r.no,sales)){is ApiResult.Success->{msg=x.value.message;confirm=null;refresh++};else->msg=x.readableMessage()}}},requiredPhrase="DELETE",requiredPhraseLabel="Type DELETE")
         else ConfirmDialog("Cancel Return","Cancel ${r.no}? The server will reject cancellation if refund, stock or lifecycle rules make it unsafe.","Cancel Return",true,{confirm=null}){scope.launch{when(val x=api.cancelReturn(r.no,sales)){is ApiResult.Success->{msg=x.value.message;confirm=null;refresh++};else->msg=x.readableMessage()}}}
     }
 }
@@ -175,7 +184,7 @@ internal fun ReturnCreateDialog(api:DseErpHttpClient,source:ReturnSource,onClose
                     val description=sourceRows.mapNotNull{it.itemDescription?.takeIf(String::isNotBlank)}.distinct().joinToString(" / ").ifBlank{code}
                     drafts+=ReturnLineDraft(code,description,sourceRows.size,rates.singleOrNull(),invoiced,previously,(invoiced-previously).coerceAtLeast(0.0))
                 }
-                msg="Return eligibility follows the v10.0.5 API contract at item-code level. When the same item appears on multiple invoice lines, Mobile combines those lines and the server allocates the returned quantity across the original invoice snapshots in its authoritative order. Return amount is calculated by the server."
+                msg="Return eligibility follows the certified ERP API contract at item-code level. When the same item appears on multiple invoice lines, Mobile combines those lines and the server allocates the returned quantity across the original invoice snapshots in its authoritative order. Return amount is calculated by the server."
             }
             else->msg=r.readableMessage()
         }
@@ -195,27 +204,22 @@ private fun RefundDialog(api:DseErpHttpClient,d:ReturnDetails,username:String,on
         DseDateField("Refund Date",date,required=true,onValue={date=it});Row(verticalAlignment=Alignment.CenterVertically){RadioButton(full,{full=true;amount=remaining.toString()});PremiumOptionLabel("Full Refund",accent=DseSuccess);RadioButton(!full,{full=false});PremiumOptionLabel("Partial Refund",accent=DseWarning)};DseNumberField("Refund Amount",amount,enabled=!full,min=0.01,max=remaining,required=true,onValue={amount=it});DseSelect("Payment Mode",mode,modes,required=true,onValue={mode=it});val bankRequired=mode.contains("bank",true)||mode.equals("NEFT",true)||mode.equals("RTGS",true);DseSelect("Bank Account",bank,banks,enabled=bankRequired,required=bankRequired,onValue={bank=it});DseField("Reference No",reference,singleLine=true,onValue={reference=it});DseField("Notes",notes,onValue={notes=it})
         PremiumSecondaryButton(proofName?:"Select Refund Proof",onClick={platformPickAttachment { picked->if(!picked.fileName.isNullOrBlank()&&!picked.base64.isNullOrBlank()){proofName=picked.fileName;proofBase64=picked.base64;msg="Proof selected: ${picked.fileName}"}else msg=picked.error?:"No proof selected" }},icon=Icons.Rounded.AttachFile)
         if(history.isNotEmpty())DseSection("Refund History",Icons.Rounded.History){history.forEach{h->ListItem(headlineContent={Text("${h.date} • ${money(h.amount)}")},supportingContent={Text(listOf(h.mode,h.reference,h.bankAccount,h.status).filter{it.isNotBlank()}.joinToString(" • "))},trailingContent={if(h.attachment.isNotBlank())Row{IconButton(onClick={scope.launch{when(val f=api.refundAttachmentFile(h.id)){is ApiResult.Success->{if(!platformShareFile("Refund proof ${d.no}",returnFileName(h.attachment,"refund-${h.id}.bin"),f.value))msg="Unable to open refund proof"};else->msg=f.readableMessage()}}}){Icon(Icons.Rounded.OpenInNew,"Open refund proof")};IconButton(onClick={scope.launch{when(val x=api.deleteRefundAttachment(h.id)){is ApiResult.Success->{msg="Refund proof removed";history=(api.returnRefunds(d.no) as? ApiResult.Success)?.value.orEmpty()};else->msg=x.readableMessage()}}}){Icon(Icons.Rounded.Delete,"Delete refund proof")}}})}}
-        if(msg.isNotBlank())Text(msg,color=MaterialTheme.colorScheme.error)
+        DseMessageFeedback(msg)
     }},confirmButton={val bankRequired=mode.contains("bank",true)||mode.equals("NEFT",true)||mode.equals("RTGS",true);Button(enabled=(amount.toDoubleOrNull()?:0.0)>0&&mode.isNotBlank()&&(!bankRequired||bank.isNotBlank()),onClick={scope.launch{val a=amount.toDoubleOrNull()?:0.0;if(a>remaining+0.005){msg="Refund cannot exceed ${money(remaining)}";return@launch};when(val r=api.recordReturnRefund(d.no,ReturnRefundCreateRequest(date,a,mode,reference,bank,d.party,notes,if(full)"FULL" else "PARTIAL",username))){is ApiResult.Success->{if(proofName!=null&&proofBase64!=null){when(val up=api.uploadRefundAttachment(r.value.id,proofName!!,decodeBase64Portable(proofBase64!!))){is ApiResult.Success->{};else->{msg="Refund saved, but proof upload failed: ${up.readableMessage()}";return@launch}}};onDone("Refund recorded in audit ledger • ${money(a)}")};else->msg=r.readableMessage()}}}){Text("Record Refund")}},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})
 }
 
 @Composable
 private fun ReturnAttachmentDialog(api:DseErpHttpClient,d:ReturnDetails,onClose:()->Unit,onDone:(String)->Unit){
     var msg by remember{mutableStateOf("")};val scope=rememberCoroutineScope()
-    PremiumAlertDialog(onDismissRequest=onClose,title={Text("Return Attachment • ${d.no}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){if(d.attachment.isNotBlank()){Text("Current attachment: ${returnFileName(d.attachment,"attachment")}");Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){OutlinedButton(onClick={scope.launch{when(val f=api.returnAttachmentFile(d.no)){is ApiResult.Success->{if(!platformShareFile("Return ${d.no} attachment",returnFileName(d.attachment,"return-${d.no}.bin"),f.value))msg="Unable to open attachment"};else->msg=f.readableMessage()}}}){Icon(Icons.Rounded.OpenInNew,null);Text("Open")};OutlinedButton(onClick={scope.launch{when(val x=api.deleteReturnAttachment(d.no)){is ApiResult.Success->onDone("Return attachment removed");else->msg=x.readableMessage()}}}){Icon(Icons.Rounded.Delete,null);Text("Remove")}}};Text("Attach supporting return proof/document.");if(msg.isNotBlank())Text(msg,color=MaterialTheme.colorScheme.error)}},confirmButton={PremiumPrimaryButton("Choose & Upload",{platformPickAttachment { picked->if(picked.fileName.isNullOrBlank()||picked.base64.isNullOrBlank()){msg=picked.error?:"No attachment selected";return@platformPickAttachment};scope.launch{try{when(val r=api.uploadReturnAttachment(d.no,picked.fileName!!,decodeBase64Portable(picked.base64!!))){is ApiResult.Success->onDone("Return attachment saved");else->msg=r.readableMessage()}}catch(t:Throwable){msg=t.message?:"Attachment upload failed"}} }},leadingIcon=Icons.Rounded.AttachFile)},dismissButton={PremiumSecondaryButton("Close",onClose)})
+    PremiumAlertDialog(onDismissRequest=onClose,title={Text("Return Attachment • ${d.no}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){if(d.attachment.isNotBlank()){Text("Current attachment: ${returnFileName(d.attachment,"attachment")}");Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){OutlinedButton(onClick={scope.launch{when(val f=api.returnAttachmentFile(d.no)){is ApiResult.Success->{if(!platformShareFile("Return ${d.no} attachment",returnFileName(d.attachment,"return-${d.no}.bin"),f.value))msg="Unable to open attachment"};else->msg=f.readableMessage()}}}){Icon(Icons.Rounded.OpenInNew,null);Text("Open")};OutlinedButton(onClick={scope.launch{when(val x=api.deleteReturnAttachment(d.no)){is ApiResult.Success->onDone("Return attachment removed");else->msg=x.readableMessage()}}}){Icon(Icons.Rounded.Delete,null);Text("Remove")}}};Text("Attach supporting return proof/document.");DseMessageFeedback(msg)}},confirmButton={PremiumPrimaryButton("Choose & Upload",{platformPickAttachment { picked->if(picked.fileName.isNullOrBlank()||picked.base64.isNullOrBlank()){msg=picked.error?:"No attachment selected";return@platformPickAttachment};scope.launch{try{when(val r=api.uploadReturnAttachment(d.no,picked.fileName!!,decodeBase64Portable(picked.base64!!))){is ApiResult.Success->onDone("Return attachment saved");else->msg=r.readableMessage()}}catch(t:Throwable){msg=t.message?:"Attachment upload failed"}} }},leadingIcon=Icons.Rounded.AttachFile)},dismissButton={PremiumSecondaryButton("Close",onClose)})
 }
 
 @Composable
 private fun ReturnNotesDialog(api:DseErpHttpClient,d:ReturnDetails,onClose:()->Unit,onDone:(String)->Unit){
     var field by remember{mutableStateOf("notes")};var value by remember{mutableStateOf(d.notes)};var msg by remember{mutableStateOf("")};val scope=rememberCoroutineScope()
-    PremiumAlertDialog(onDismissRequest=onClose,title={Text("Edit ${d.no}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){DseSelect("Editable Field",field,listOf("notes","reason"),onValue={field=it});DseField(if(field=="notes")"Notes" else "Reason",value,onValue={value=it});Text("Return status cannot be edited here. Approve/Reject/Cancel are protected lifecycle actions.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);if(msg.isNotBlank())Text(msg,color=MaterialTheme.colorScheme.error)}},confirmButton={Button(onClick={scope.launch{when(val r=api.updateReturn(d.no,field,value)){is ApiResult.Success->onDone(r.value.message.ifBlank{"Return updated"});else->msg=r.readableMessage()}}}){Text("Save")}},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})
+    PremiumAlertDialog(onDismissRequest=onClose,title={Text("Edit ${d.no}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){DseSelect("Editable Field",field,listOf("notes","reason"),onValue={field=it});DseField(if(field=="notes")"Notes" else "Reason",value,onValue={value=it});Text("Return status cannot be edited here. Approve/Reject/Cancel are protected lifecycle actions.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);DseMessageFeedback(msg)}},confirmButton={Button(onClick={scope.launch{when(val r=api.updateReturn(d.no,field,value)){is ApiResult.Success->onDone(r.value.message.ifBlank{"Return updated"});else->msg=r.readableMessage()}}}){Text("Save")}},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})
 }
 
-@Composable
-private fun TypedDeleteDialog(title:String,message:String,onClose:()->Unit,onDelete:()->Unit){
-    var typed by remember{mutableStateOf("")}
-    PremiumAlertDialog(onDismissRequest=onClose,title={Text(title)},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){Text(message);DseField("Type DELETE",typed,singleLine=true,required=true,onValue={typed=it})}},confirmButton={Button(enabled=typed=="DELETE",colors=ButtonDefaults.buttonColors(containerColor=MaterialTheme.colorScheme.error),onClick=onDelete){Text("Delete")}},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})
-}
 
 @Composable private fun detailReturnRows(d:ReturnDetails)=detailReturnRows(listOf("Original Invoice" to d.invoice,"Party" to d.party,"Return Date" to d.date,"Return Total" to money(d.total),"Already Refunded" to money(d.refund),"Refundable" to money((d.total-d.refund).coerceAtLeast(0.0)),"Payment Terms" to d.paymentTerms,"Currency" to d.currency,"Notes" to d.notes))
 @Composable private fun detailReturnRows(rows:List<Pair<String,String>>){detailRows(rows)}
