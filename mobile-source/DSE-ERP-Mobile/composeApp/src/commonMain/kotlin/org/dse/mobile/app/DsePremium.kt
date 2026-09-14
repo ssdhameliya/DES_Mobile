@@ -14,7 +14,6 @@ import androidx.compose.material.icons.rounded.CloudDone
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Fingerprint
 import androidx.compose.material.icons.rounded.ArrowForward
-import androidx.compose.material.icons.rounded.PhoneIphone
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -434,7 +433,7 @@ internal fun PremiumBiometricPanel(
                 )
             }
             Icon(
-                if (enabled) Icons.Rounded.ArrowForward else if(platformName()=="Android") Icons.Rounded.PhoneAndroid else Icons.Rounded.PhoneIphone,
+                if (enabled) Icons.Rounded.ArrowForward else if(platformName()=="Android") Icons.Rounded.PhoneAndroid else Icons.Rounded.PhoneAndroid,
                 null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(20.dp),

@@ -47,7 +47,6 @@ def function_decls(bases, keyword):
 expects=function_decls(common_bases,'expect')
 sets={
  'androidMain': function_decls([root/'composeApp/src/androidMain',root/'shared/src/androidMain'],'actual'),
- 'iosMain': function_decls([root/'composeApp/src/iosMain',root/'shared/src/iosMain'],'actual'),
  'jvmMain': function_decls([root/'composeApp/src/jvmMain',root/'shared/src/jvmMain'],'actual'),
 }
 failed=False
@@ -79,15 +78,61 @@ checks={
  'androidApp module': 'include(":androidApp")' in (root/'settings.gradle.kts').read_text(),
  'AGP app plugin': 'com.android.application' in (root/'build.gradle.kts').read_text(),
  'KMP Android plugin': 'com.android.kotlin.multiplatform.library' in (root/'build.gradle.kts').read_text(),
- '10.0.9 baseline': 'SERVER_BASELINE = "10.0.9"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
- 'mobile 1.2.10': 'FALLBACK_MOBILE_VERSION_NAME = "1.2.10"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
+ '10.0.11 baseline': 'SERVER_BASELINE = "10.0.11"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
+ 'mobile 1.2.11': 'FALLBACK_MOBILE_VERSION_NAME = "1.2.11"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
  'server-driven mobile policy': (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileCompatibility.kt').is_file(),
  '10.0.1 runtime floor': 'MINIMUM_COMPATIBLE_SERVER_VERSION = "10.0.1"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
  'API revision bearer v5': 'EXPECTED_API_REVISION = "spring-security-bearer-v5"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
- 'desktop 10.0.9 linkage resolver': (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/model/DesktopLinkage.kt').is_file(),
+ 'desktop linkage resolver': (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/model/DesktopLinkage.kt').is_file(),
  'desktop linkage contract tests': (root/'shared/src/commonTest/kotlin/org/dse/mobile/core/DesktopLinkageContractTest.kt').is_file(),
 }
 android_gradle=(root/'androidApp/build.gradle.kts').read_text()
+document_text=(root/'composeApp/src/commonMain/kotlin/org/dse/mobile/app/DocumentScreens.kt').read_text()
+api_routes=(root/'shared/src/commonMain/kotlin/org/dse/mobile/core/api/ApiRoutes.kt').read_text()
+compat_text=(root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileCompatibility.kt').read_text()
+shared_gradle=(root/'shared/build.gradle.kts').read_text()
+compose_gradle=(root/'composeApp/build.gradle.kts').read_text()
+android_only_checks={
+ 'native iosApp removed': not (root/'iosApp').exists(),
+ 'compose iosMain removed': not (root/'composeApp/src/iosMain').exists(),
+ 'shared iosMain removed': not (root/'shared/src/iosMain').exists(),
+ 'shared iOS targets removed': 'iosArm64()' not in shared_gradle and 'iosSimulatorArm64()' not in shared_gradle and 'ktor-client-darwin' not in shared_gradle,
+ 'compose iOS targets removed': 'iosArm64()' not in compose_gradle and 'iosSimulatorArm64()' not in compose_gradle and 'KotlinNativeTarget' not in compose_gradle,
+ 'Android policy only': 'status.minimumSupportedAndroidVersion' in compat_text and 'status.minimumSupportedIosVersion else' not in compat_text,
+}
+for key,value in android_only_checks.items():
+    print(f'{key}: {"OK" if value else "FAIL"}')
+    failed |= not value
+
+document_contract_checks={
+ 'canonical document route exact': 'constvalCANONICAL_DOCUMENT="/api/documents/render"' in api_routes.replace(' ',''),
+ 'business email route exact': 'constvalBUSINESS_EMAIL="/api/authority/email"' in api_routes.replace(' ',''),
+ 'document contract test': (root/'shared/src/commonTest/kotlin/org/dse/mobile/core/DocumentContractTest.kt').is_file(),
+ 'sales PDF approval lock removed': 'SALES_INVOICE",r.invoiceNo,"PDF")}},enabled=active&&!approvalLocked' not in document_text,
+ 'sales Excel approval lock removed': 'SALES_INVOICE",r.invoiceNo,"XLSX")}},enabled=active&&!approvalLocked' not in document_text,
+ 'sales Email approval lock removed': 'Send Email",{loadFull(r){email=it}},enabled=active&&!approvalLocked' not in document_text,
+ 'purchase PDF approval lock removed': 'PURCHASE_INVOICE",r.invoiceNo,"PDF")}},enabled=active&&!approvalLocked' not in document_text,
+ 'purchase Excel approval lock removed': 'PURCHASE_INVOICE",r.invoiceNo,"XLSX")}},enabled=active&&!approvalLocked' not in document_text,
+}
+for key,value in document_contract_checks.items():
+    print(f'{key}: {"OK" if value else "FAIL"}')
+    failed |= not value
+
+release_1211_behavior_checks={
+ 'master CATEGORY code': 'lookupValuesByCode("CATEGORY")' in (root/'composeApp/src/commonMain/kotlin/org/dse/mobile/app/MoreScreens.kt').read_text(),
+ 'master UNIT code': 'lookupValuesByCode("UNIT")' in (root/'composeApp/src/commonMain/kotlin/org/dse/mobile/app/MoreScreens.kt').read_text(),
+ 'master GST code': 'lookupValuesByCode("GST")' in (root/'composeApp/src/commonMain/kotlin/org/dse/mobile/app/MoreScreens.kt').read_text(),
+ 'master DISCOUNT code': 'lookupValuesByCode("DISCOUNT")' in (root/'composeApp/src/commonMain/kotlin/org/dse/mobile/app/MoreScreens.kt').read_text(),
+ 'legacy ITEM_CATEGORY removed': 'lookupValuesByCode("ITEM_CATEGORY")' not in (root/'composeApp/src/commonMain/kotlin/org/dse/mobile/app/MoreScreens.kt').read_text(),
+ 'HTTP cancellation rethrown': 'catch(e:CancellationException){throw e}catch(e:Exception)' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/api/DseErpHttpClient.kt').read_text(),
+ 'biometric extends valid session': 'when(val extended=a.extendSession())' in (root/'composeApp/src/commonMain/kotlin/org/dse/mobile/app/App.kt').read_text(),
+ 'biometric lock action': 'biometricLockAvailable' in (root/'composeApp/src/commonMain/kotlin/org/dse/mobile/app/App.kt').read_text(),
+ 'secure logout disables stale biometric enrollment': 'OfflineRepository.setBiometricLoginEnabled(false)' in (root/'composeApp/src/commonMain/kotlin/org/dse/mobile/app/App.kt').read_text(),
+}
+for key,value in release_1211_behavior_checks.items():
+    print(f'{key}: {"OK" if value else "FAIL"}')
+    failed |= not value
+
 distribution_checks={
  'UAT product flavor': 'create("uat")' in android_gradle and 'applicationIdSuffix = ".uat"' in android_gradle,
  'PROD product flavor': 'create("prod")' in android_gradle and 'api.jasviindustries.in' in android_gradle,
@@ -109,7 +154,7 @@ for key,value in checks.items():
 health_model=(root/'shared/src/commonMain/kotlin/org/dse/mobile/core/model/AuthModels.kt').read_text()
 for field in ['minimumSupportedDesktopVersion','latestDesktopVersion','minimumSupportedAndroidVersion','latestAndroidVersion','minimumSupportedIosVersion','latestIosVersion','environment','databaseName','utcTime','dateFormat','timePolicy']:
     ok=f'val {field}:' in health_model
-    print(f'10.0.9 runtime health field {field}: {"OK" if ok else "FAIL"}')
+    print(f'10.0.11 runtime health field {field}: {"OK" if ok else "FAIL"}')
     failed |= not ok
 
 app_text=(root/'composeApp/src/commonMain/kotlin/org/dse/mobile/app/App.kt').read_text()

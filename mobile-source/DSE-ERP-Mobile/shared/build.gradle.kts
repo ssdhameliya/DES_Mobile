@@ -1,8 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
-val isMacOs = System.getProperty("os.name")
-    .startsWith("Mac", ignoreCase = true)
-
 plugins {
     kotlin("multiplatform")
     kotlin("plugin.serialization")
@@ -25,12 +22,6 @@ kotlin {
             jvmTarget.set(JvmTarget.JVM_17)
         }
     }
-
-    if (isMacOs) {
-        iosArm64()
-        iosSimulatorArm64()
-    }
-
     sourceSets {
         commonMain.dependencies {
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
@@ -48,13 +39,6 @@ kotlin {
             implementation("io.ktor:ktor-client-okhttp:3.5.2")
         }
 
-        if (isMacOs) {
-            val iosMain by getting {
-                dependencies {
-                    implementation("io.ktor:ktor-client-darwin:3.5.2")
-                }
-            }
-        }
 
         commonTest.dependencies {
             implementation(kotlin("test"))

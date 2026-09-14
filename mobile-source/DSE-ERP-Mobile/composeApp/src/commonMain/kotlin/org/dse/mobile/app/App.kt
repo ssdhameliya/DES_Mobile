@@ -132,7 +132,14 @@ data class PermissionContext(val user:UserPayload?,val permissions:List<Effectiv
        dialogs.error(text,"Biometric Verification")
       }else{
        val a=DseErpHttpClient(serverUrl,sessions);api?.close();api=a
-       applyAuthenticationResult(authCoordinator.authenticateBiometricSession(a,serverUrl))
+       when(val extended=a.extendSession()){
+        is ApiResult.Success->applyAuthenticationResult(authCoordinator.authenticateBiometricSession(a,serverUrl))
+        else->{
+         sessions.clear();saved=false;a.close();api=null
+         val text="Your remembered session has expired or was signed out. Sign in with password/MFA, then enable biometric unlock again."
+         message=text;dialogs.warning(text,"Biometric Session Expired")
+        }
+       }
       }
      },
      onForgot={resetOpen=true},
@@ -170,16 +177,27 @@ data class PermissionContext(val user:UserPayload?,val permissions:List<Effectiv
     )
     RootPage.APP->{
      val a=api
-     if(a==null)Text("Session unavailable") else MainApp(a,PermissionContext(user,permissions),message){
-      a.logout()
-      OfflineRepository.clearAuthSnapshot(serverUrl)
-      OfflineRepository.clearScopeData()
-      OfflineRepository.deactivateScope()
-      a.close();api=null;user=null;permissions=emptyList();saved=false
-      message="Signed out securely; cached ERP data for this session was cleared"
-      root=RootPage.LOGIN
-      dialogs.information(message,"Signed Out")
-     }
+     if(a==null)Text("Session unavailable") else MainApp(
+      a,PermissionContext(user,permissions),message,
+      biometricLockAvailable=biometric&&OfflineRepository.biometricLoginEnabled(),
+      onLock={
+       a.close();api=null;user=null;permissions=emptyList();saved=sessions.accessToken()?.isNotBlank()==true
+       message="App locked. Unlock with biometrics or sign in with your password."
+       root=RootPage.LOGIN
+       dialogs.information(message,"App Locked")
+      },
+      onLogout={
+       a.logout()
+       OfflineRepository.setBiometricLoginEnabled(false)
+       OfflineRepository.clearAuthSnapshot(serverUrl)
+       OfflineRepository.clearScopeData()
+       OfflineRepository.deactivateScope()
+       a.close();api=null;user=null;permissions=emptyList();saved=false
+       message="Signed out securely; the server session was revoked and biometric unlock was disabled for this session."
+       root=RootPage.LOGIN
+       dialogs.information(message,"Signed Out")
+      },
+     )
     }
    }
    if(resetOpen)PasswordResetDialog(serverUrl,{resetOpen=false}){doneMessage->
@@ -563,7 +581,7 @@ private fun friendlyLoginMessage(message:String):String{
 }
 
 
-@Composable private fun MainApp(api:DseErpHttpClient,permission:PermissionContext,banner:String,onLogout:suspend()->Unit){
+@Composable private fun MainApp(api:DseErpHttpClient,permission:PermissionContext,banner:String,biometricLockAvailable:Boolean,onLock:suspend()->Unit,onLogout:suspend()->Unit){
  var tab by remember{mutableStateOf(MainTab.DASHBOARD)}
  var more by remember{mutableStateOf<MoreDestination?>(null)}
  var online by remember{mutableStateOf<Boolean?>(null)}
@@ -648,7 +666,8 @@ private fun friendlyLoginMessage(message:String):String{
      IconButton(onClick={globalSearch=true}){Icon(Icons.Rounded.Search,"Global Search")}
      IconButton(onClick={tab=MainTab.MORE;more=MoreDestination.NOTIFICATIONS}){Icon(Icons.Rounded.NotificationsNone,"Notifications")}
      ConnectionChip(online)
-     IconButton(onClick={scope.launch{onLogout()}}){Icon(Icons.Rounded.Logout,"Logout")}
+     if(biometricLockAvailable)IconButton(onClick={scope.launch{onLock()}}){Icon(Icons.Rounded.Lock,"Lock App for biometric unlock")}
+     IconButton(onClick={scope.launch{onLogout()}}){Icon(Icons.Rounded.Logout,"Sign Out and revoke session")}
     },
     colors=TopAppBarDefaults.topAppBarColors(containerColor=MaterialTheme.colorScheme.surface),
    )
