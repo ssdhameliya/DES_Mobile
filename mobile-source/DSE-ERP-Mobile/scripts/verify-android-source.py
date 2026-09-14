@@ -74,19 +74,30 @@ if bad:
     for path,exc in bad: print(path,exc)
     failed=True
 
+android_gradle=(root/'androidApp/build.gradle.kts').read_text()
+build_info_path=root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt'
+build_info_text=build_info_path.read_text()
+android_version_match=re.search(r'versionName\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"',android_gradle)
+shared_version_match=re.search(r'CURRENT_MOBILE_VERSION_NAME\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"',build_info_text)
+server_baseline_match=re.search(r'SERVER_BASELINE\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"',build_info_text)
+android_version=android_version_match.group(1) if android_version_match else ''
+shared_version=shared_version_match.group(1) if shared_version_match else ''
+server_baseline=server_baseline_match.group(1) if server_baseline_match else ''
+
 checks={
  'androidApp module': 'include(":androidApp")' in (root/'settings.gradle.kts').read_text(),
  'AGP app plugin': 'com.android.application' in (root/'build.gradle.kts').read_text(),
  'KMP Android plugin': 'com.android.kotlin.multiplatform.library' in (root/'build.gradle.kts').read_text(),
- '10.0.11 baseline': 'SERVER_BASELINE = "10.0.11"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
- 'mobile 1.2.11': 'FALLBACK_MOBILE_VERSION_NAME = "1.2.11"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
+ 'release versions parse': bool(android_version and shared_version),
+ 'mobile version sources aligned': bool(android_version) and android_version == shared_version,
+ '10.0.12 certified baseline': server_baseline == '10.0.12',
+ 'distribution identity uses baseline source': '$MOBILE_VERSION_NAME-V$SERVER_BASELINE-DISTRIBUTION' in build_info_text,
  'server-driven mobile policy': (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileCompatibility.kt').is_file(),
- '10.0.1 runtime floor': 'MINIMUM_COMPATIBLE_SERVER_VERSION = "10.0.1"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
- 'API revision bearer v5': 'EXPECTED_API_REVISION = "spring-security-bearer-v5"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
+ '10.0.1 runtime floor': 'MINIMUM_COMPATIBLE_SERVER_VERSION = "10.0.1"' in build_info_text,
+ 'API revision bearer v5': 'EXPECTED_API_REVISION = "spring-security-bearer-v5"' in build_info_text,
  'desktop linkage resolver': (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/model/DesktopLinkage.kt').is_file(),
  'desktop linkage contract tests': (root/'shared/src/commonTest/kotlin/org/dse/mobile/core/DesktopLinkageContractTest.kt').is_file(),
 }
-android_gradle=(root/'androidApp/build.gradle.kts').read_text()
 document_text=(root/'composeApp/src/commonMain/kotlin/org/dse/mobile/app/DocumentScreens.kt').read_text()
 api_routes=(root/'shared/src/commonMain/kotlin/org/dse/mobile/core/api/ApiRoutes.kt').read_text()
 compat_text=(root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileCompatibility.kt').read_text()
@@ -151,10 +162,12 @@ for key,value in checks.items():
     print(f'{key}: {"OK" if value else "FAIL"}')
     failed |= not value
 
+print(f'release_identity mobile={android_version or "UNKNOWN"} baseline={server_baseline or "UNKNOWN"}')
+
 health_model=(root/'shared/src/commonMain/kotlin/org/dse/mobile/core/model/AuthModels.kt').read_text()
 for field in ['minimumSupportedDesktopVersion','latestDesktopVersion','minimumSupportedAndroidVersion','latestAndroidVersion','minimumSupportedIosVersion','latestIosVersion','environment','databaseName','utcTime','dateFormat','timePolicy']:
     ok=f'val {field}:' in health_model
-    print(f'10.0.11 runtime health field {field}: {"OK" if ok else "FAIL"}')
+    print(f'runtime health field {field}: {"OK" if ok else "FAIL"}')
     failed |= not ok
 
 app_text=(root/'composeApp/src/commonMain/kotlin/org/dse/mobile/app/App.kt').read_text()
@@ -212,7 +225,6 @@ for base in [root/'composeApp/src',root/'shared/src',root/'api-contract']:
 print(f'old_9.0.92_references={len(old_baseline)}')
 if old_baseline:
     print('  stale baseline:',*old_baseline,sep='\n  '); failed=True
-
 
 stale_100=[]
 for base in [root/'composeApp/src',root/'shared/src',root/'api-contract']:
