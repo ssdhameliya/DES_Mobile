@@ -223,11 +223,52 @@ private enum class MasterMode(val label:String){CUSTOMERS("Customers"),SUPPLIERS
 }
 
 @Composable private fun ItemEditor(api:DseErpHttpClient,current:MasterItem?,onClose:()->Unit,onSave:(MasterItem)->Unit){
-    var d by remember{mutableStateOf(current?:MasterItem())};var code by remember{mutableStateOf(current?.itemCode.orEmpty())};var msg by remember{mutableStateOf("")};var categories by remember{mutableStateOf<List<String>>(emptyList())}
-    LaunchedEffect(current){if(current==null&&code.isBlank())when(val r=api.nextItemCode()){is ApiResult.Success->code=r.value.code;else->msg=r.readableMessage()};when(val c=api.lookupValuesByCode("ITEM_CATEGORY")){is ApiResult.Success->categories=c.value;else->Unit}}
-    PremiumAlertDialog(onDismissRequest=onClose,title={Text(if(current==null)"New Item" else "Edit ${current.itemCode}")},text={Column(Modifier.heightIn(max=650.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){
-        DseField("Item Code",code,readOnly=true,singleLine=true,required=true,onValue={});DseField("Description",d.description,required=true,onValue={d=d.copy(description=it)});DseSelect("Category",d.category.orEmpty(),categories,required=true,onValue={d=d.copy(category=it)});DseField("Brand",d.brand.orEmpty(),singleLine=true,onValue={d=d.copy(brand=it)});DseField("Material",d.material.orEmpty(),singleLine=true,onValue={d=d.copy(material=it)});DseField("Size",d.size.orEmpty(),singleLine=true,onValue={d=d.copy(size=it)});DseField("Unit",d.unit.orEmpty(),singleLine=true,required=true,onValue={d=d.copy(unit=it)});DseField("HSN",d.hsn.orEmpty(),singleLine=true,required=true,onValue={d=d.copy(hsn=it)});DseNumberField("GST %",d.gst.toString(),min=0.0,max=100.0,required=true,onValue={d=d.copy(gst=it.toDoubleOrNull()?:0.0)});DseNumberField("Discount %",d.discountPercent.toString(),min=0.0,max=100.0,required=true,onValue={d=d.copy(discountPercent=it.toDoubleOrNull()?:0.0)});DseNumberField("Purchase Price",d.purchasePrice.toString(),min=0.0,onValue={d=d.copy(purchasePrice=it.toDoubleOrNull()?:0.0)});DseNumberField("Selling Price",d.sellingPrice.toString(),min=0.0,onValue={d=d.copy(sellingPrice=it.toDoubleOrNull()?:0.0)});DseNumberField("Opening Stock",d.openingStock.toString(),min=0.0,required=true,onValue={d=d.copy(openingStock=it.toDoubleOrNull()?:0.0)});DseNumberField("Minimum Stock",d.minimumStock.toString(),min=0.0,onValue={d=d.copy(minimumStock=it.toDoubleOrNull()?:0.0)});DseField("Location",d.location.orEmpty(),onValue={d=d.copy(location=it)});DseField("Remarks",d.remarks.orEmpty(),required=true,onValue={d=d.copy(remarks=it)});Row(verticalAlignment=Alignment.CenterVertically){Switch(d.active,{d=d.copy(active=it)});PremiumOptionLabel("Active",accent=DseSuccess)};DseMessageFeedback(msg)
-    }},confirmButton={Button(enabled=code.isNotBlank()&&d.description.isNotBlank()&&!d.category.isNullOrBlank()&&!d.unit.isNullOrBlank()&&!d.hsn.isNullOrBlank()&&!d.remarks.isNullOrBlank(),onClick={onSave(d.copy(itemCode=code))}){Text("Save")}},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})
+    var d by remember{mutableStateOf(current?:MasterItem())}
+    var code by remember{mutableStateOf(current?.itemCode.orEmpty())}
+    var msg by remember{mutableStateOf("")}
+    var categories by remember{mutableStateOf<List<String>>(emptyList())}
+    var units by remember{mutableStateOf<List<String>>(emptyList())}
+    var gstValues by remember{mutableStateOf<List<String>>(emptyList())}
+    var discounts by remember{mutableStateOf<List<String>>(emptyList())}
+
+    fun lookupNumber(value:String):Double=value.replace("%","").trim().toDoubleOrNull()?:0.0
+    fun lookupDisplay(options:List<String>,number:Double):String =
+        options.firstOrNull{kotlin.math.abs(lookupNumber(it)-number)<0.000001}
+            ?: if(kotlin.math.abs(number-kotlin.math.round(number))<0.000001)number.toInt().toString() else number.toString()
+
+    LaunchedEffect(current){
+        if(current==null&&code.isBlank())when(val r=api.nextItemCode()){is ApiResult.Success->code=r.value.code;else->msg=r.readableMessage()}
+        when(val r=api.lookupValuesByCode("CATEGORY")){is ApiResult.Success->categories=r.value;else->msg=r.readableMessage()}
+        when(val r=api.lookupValuesByCode("UNIT")){is ApiResult.Success->units=r.value;else->msg=r.readableMessage()}
+        when(val r=api.lookupValuesByCode("GST")){is ApiResult.Success->gstValues=r.value;else->msg=r.readableMessage()}
+        when(val r=api.lookupValuesByCode("DISCOUNT")){is ApiResult.Success->discounts=r.value;else->msg=r.readableMessage()}
+    }
+    PremiumAlertDialog(
+        onDismissRequest=onClose,
+        title={Text(if(current==null)"New Item" else "Edit ${current.itemCode}")},
+        text={Column(Modifier.heightIn(max=650.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){
+            DseField("Item Code",code,readOnly=true,singleLine=true,required=true,onValue={})
+            DseField("Description",d.description,required=true,onValue={d=d.copy(description=it)})
+            DseSelect("Category",d.category.orEmpty(),categories,required=true,onValue={d=d.copy(category=it)})
+            DseSelect("Unit",d.unit.orEmpty(),units,required=true,onValue={d=d.copy(unit=it)})
+            DseField("HSN",d.hsn.orEmpty(),singleLine=true,required=true,onValue={d=d.copy(hsn=it)})
+            DseSelect("GST %",lookupDisplay(gstValues,d.gst),gstValues,required=true,onValue={d=d.copy(gst=lookupNumber(it))})
+            DseSelect("Discount %",lookupDisplay(discounts,d.discountPercent),discounts,required=true,onValue={d=d.copy(discountPercent=lookupNumber(it))})
+            DseNumberField("Purchase Price",d.purchasePrice.toString(),min=0.0,onValue={d=d.copy(purchasePrice=it.toDoubleOrNull()?:0.0)})
+            DseNumberField("Selling Price",d.sellingPrice.toString(),min=0.0,onValue={d=d.copy(sellingPrice=it.toDoubleOrNull()?:0.0)})
+            DseNumberField("Opening Stock",d.openingStock.toString(),enabled=current==null,min=0.0,required=true,onValue={d=d.copy(openingStock=it.toDoubleOrNull()?:0.0)})
+            DseNumberField("Minimum Stock",d.minimumStock.toString(),min=0.0,onValue={d=d.copy(minimumStock=it.toDoubleOrNull()?:0.0)})
+            DseField("Location",d.location.orEmpty(),onValue={d=d.copy(location=it)})
+            DseField("Remarks",d.remarks.orEmpty(),required=true,onValue={d=d.copy(remarks=it)})
+            Row(verticalAlignment=Alignment.CenterVertically){Switch(d.active,{d=d.copy(active=it)});PremiumOptionLabel("Active",accent=DseSuccess)}
+            DseMessageFeedback(msg)
+        }},
+        confirmButton={Button(
+            enabled=code.isNotBlank()&&d.description.isNotBlank()&&!d.category.isNullOrBlank()&&!d.unit.isNullOrBlank()&&!d.hsn.isNullOrBlank()&&!d.remarks.isNullOrBlank()&&gstValues.isNotEmpty()&&discounts.isNotEmpty(),
+            onClick={onSave(d.copy(itemCode=code,brand=null,material=null,size=null))},
+        ){Text("Save")}},
+        dismissButton={TextButton(onClick=onClose){Text("Cancel")}},
+    )
 }
 
 @Composable private fun LookupScreen(api:DseErpHttpClient,p:PermissionContext){
@@ -611,12 +652,12 @@ private fun reportShareText(from:String,to:String,type:String,r:ReportBundle)=bu
                     Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){
                         PremiumIconTile(Icons.Rounded.Fingerprint,if(biometricEnabled)DseSuccess else DseInfo,size=42.dp)
                         Column(Modifier.weight(1f)){
-                            Text("Fingerprint / biometric sign-in",fontWeight=FontWeight.Bold)
+                            Text("Fingerprint / biometric unlock",fontWeight=FontWeight.Bold)
                             Text(
                                 when{
                                     !biometricAvailable->"Set up a fingerprint, face unlock or device credential in Android first."
-                                    biometricEnabled->"Enabled. Your encrypted signed-in session can be unlocked without re-entering the password."
-                                    else->"Off. Turn this on once to use ${platformBiometricUnlockLabel()} on the sign-in screen."
+                                    biometricEnabled->"Enabled. Use Lock App to preserve the active encrypted session, then unlock it with biometrics without re-entering the password."
+                                    else->"Off. Turn this on to use ${platformBiometricUnlockLabel()} when unlocking a remembered active session. Secure Sign Out still requires password/MFA next time."
                                 },
                                 style=MaterialTheme.typography.bodySmall,
                                 color=MaterialTheme.colorScheme.onSurfaceVariant,
@@ -629,13 +670,13 @@ private fun reportShareText(from:String,to:String,type:String,r:ReportBundle)=bu
                                 if(!enable){
                                     OfflineRepository.setBiometricLoginEnabled(false)
                                     biometricEnabled=false
-                                    msg="Biometric sign-in disabled"
+                                    msg="Biometric unlock disabled"
                                 }else scope.launch{
-                                    val auth=platformAuthenticateBiometric("Enable biometric sign-in")
+                                    val auth=platformAuthenticateBiometric("Enable biometric unlock")
                                     if(auth.success){
                                         OfflineRepository.setBiometricLoginEnabled(true)
                                         biometricEnabled=true
-                                        msg="Biometric sign-in enabled"
+                                        msg="Biometric unlock enabled"
                                     }else msg=auth.message.ifBlank{"Biometric verification was not completed"}
                                 }
                             },
@@ -797,9 +838,9 @@ private fun reportShareText(from:String,to:String,type:String,r:ReportBundle)=bu
                 Column(Modifier.weight(1f)){Text("Jasvi Industries",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.ExtraBold,color=androidx.compose.ui.graphics.Color.White);Text("Enterprise Mobile • Business. Anywhere.",style=MaterialTheme.typography.bodyMedium,color=androidx.compose.ui.graphics.Color.White.copy(.80f))}
             }
         }
-        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){DseMetricTile("Mobile",MobileBuildInfo.MOBILE_VERSION,Icons.Rounded.PhoneIphone,Modifier.weight(1f),DseViolet);DseMetricTile("Server",MobileBuildInfo.SERVER_BASELINE,Icons.Rounded.CloudDone,Modifier.weight(1f),DseSuccess)}
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){DseMetricTile("Mobile",MobileBuildInfo.MOBILE_VERSION,Icons.Rounded.PhoneAndroid,Modifier.weight(1f),DseViolet);DseMetricTile("Server",MobileBuildInfo.SERVER_BASELINE,Icons.Rounded.CloudDone,Modifier.weight(1f),DseSuccess)}
         DseSection("Compatibility",Icons.Rounded.Verified){Text("API contract ${MobileBuildInfo.API_CONTRACT_VERSION}");Text("Business authority remains on the Jasvi Industries server. Mobile lifecycle, numbering, validation, permissions and resulting ERP state stay server-owned.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
-        DseSection(platformDeviceClassLabel(),if(platformName()=="Android") Icons.Rounded.PhoneAndroid else Icons.Rounded.PhoneIphone){Text(platformSecurityLabel());Text(platformImportCapability());Text(platformPushCapability());Text(platformSystemExperienceCapability())}
+        DseSection(platformDeviceClassLabel(),if(platformName()=="Android") Icons.Rounded.PhoneAndroid else Icons.Rounded.PhoneAndroid){Text(platformSecurityLabel());Text(platformImportCapability());Text(platformPushCapability());Text(platformSystemExperienceCapability())}
         DseSection("Secure architecture",Icons.Rounded.Security){Text("Server backup/restore, safe rollback, updater and template-studio authoring remain protected desktop/server administration operations.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Text("Mobile consumes approved ERP data and documents without duplicating destructive server-maintenance tools.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
     }
 }

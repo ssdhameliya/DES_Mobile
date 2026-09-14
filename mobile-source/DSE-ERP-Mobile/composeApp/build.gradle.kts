@@ -1,8 +1,4 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
-
-val isMacOs = System.getProperty("os.name")
-    .startsWith("Mac", ignoreCase = true)
 
 plugins {
     kotlin("multiplatform")
@@ -31,19 +27,6 @@ kotlin {
             enable = true
         }
     }
-
-    if (isMacOs) {
-        iosArm64()
-        iosSimulatorArm64()
-
-        targets.withType<KotlinNativeTarget>().configureEach {
-            binaries.framework {
-                baseName = "ComposeApp"
-                isStatic = true
-            }
-        }
-    }
-
     sourceSets {
         commonMain.dependencies {
             implementation(project(":shared"))

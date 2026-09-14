@@ -57,7 +57,7 @@ private fun ImportModule.supportsStrategy()=this in setOf(ImportModule.ITEMS,Imp
     }
    }
   }
-  DseSection("${platformName()} System Experience",if(platformName()=="Android") Icons.Rounded.PhoneAndroid else Icons.Rounded.PhoneIphone){
+  DseSection("${platformName()} System Experience",if(platformName()=="Android") Icons.Rounded.PhoneAndroid else Icons.Rounded.PhoneAndroid){
    Text(platformPushCapability(),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
    PremiumPrimaryButton("Enable Notifications",{scope.launch{val x=platformRequestPushNotifications();msg=if(x.granted)"${platformName()} notification permission enabled. The current ERP API does not expose device-token registration, so remote ERP push delivery is not claimed by this build." else x.message}},Modifier.fillMaxWidth(),leadingIcon=Icons.Rounded.NotificationsActive)
    Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){Switch(widget,{widget=it;OfflineRepository.setWidgetSharingEnabled(it);if(!it)platformPublishWidgetSnapshot(WidgetDashboardSnapshot(updatedAtMillis=platformOfflineNowMillis()))});Text("Share authenticated dashboard KPIs with ${platformName()} widget")}
