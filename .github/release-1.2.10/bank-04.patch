@@ -1,0 +1,11 @@
+--- a/mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/BankFinanceScreens.kt
++++ b/mobile-source/DSE-ERP-Mobile/composeApp/src/commonMain/kotlin/org/dse/mobile/app/BankFinanceScreens.kt
+@@ -147,7 +204,7 @@
+     noticeKindFor(msg)?.let{kind->if(msg!=dismissedMessage)DseNoticeDialog(msg,kind){dismissedMessage=msg}}
+     actionTarget?.let{t->
+         val status=normalizedStatus(t)
+-        val linked=!t.linkedDocumentNo.isNullOrBlank()
++        val linked=t.linkedAllocations.isNotEmpty()||t.linkedTargetId!=null||t.financeEntryId!=null||!t.linkedDocumentNo.isNullOrBlank()
+         val debit=t.debit>0.005
+         DseRecordActionSheet("Bank Transaction • ${t.transactionDate}","Desktop-aligned statement actions • $status",buildList{
+             add(PremiumActionSpec("View Transaction Details",{openTransaction(t,"audit")}))
