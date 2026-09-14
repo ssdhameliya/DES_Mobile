@@ -37,9 +37,8 @@ jobs:
             .github/release-1.2.10/DocumentScreens.kt.patch
             .github/release-1.2.10/ReturnScreens.kt.patch
           )
-          for patch in "${patches[@]}"; do
-            git apply --check "$patch"
-            git apply "$patch"
+          for patch_file in "${patches[@]}"; do
+            patch -p1 --forward --batch < "$patch_file"
           done
 
       - name: Verify Mobile source contract
