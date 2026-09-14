@@ -17,10 +17,22 @@ jobs:
     steps:
       - name: Checkout exact source
         uses: actions/checkout@v6
-      - name: Upload clean IntelliJ source snapshot
+
+      - name: Resolve aligned release identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' mobile-source/DSE-ERP-Mobile/androidApp/build.gradle.kts | head -1)"
+          BASELINE="$(sed -n 's/.*SERVER_BASELINE = "\([^"]*\)".*/\1/p' mobile-source/DSE-ERP-Mobile/shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt | head -1)"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid mobile version: $VERSION" >&2; exit 1; }
+          [[ "$BASELINE" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid Desktop/Server baseline: $BASELINE" >&2; exit 1; }
+          echo "MOBILE_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "SERVER_BASELINE=$BASELINE" >> "$GITHUB_ENV"
+
+      - name: Upload clean aligned IntelliJ source snapshot
         uses: actions/upload-artifact@v7
         with:
-          name: Jasvi-Mobile-IntelliJ-${{ github.sha }}
+          name: Jasvi-Mobile-${{ env.MOBILE_VERSION }}-V${{ env.SERVER_BASELINE }}-IntelliJ-${{ github.sha }}
           path: mobile-source/DSE-ERP-Mobile
           include-hidden-files: true
           if-no-files-found: error
