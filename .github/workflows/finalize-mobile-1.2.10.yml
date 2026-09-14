@@ -1,0 +1,67 @@
+name: Finalize Mobile 1.2.10 clean source
+
+on:
+  push:
+    branches:
+      - tmp/mobile-1.2.10-finalize
+    paths:
+      - .github/workflows/finalize-mobile-1.2.10.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout staging branch
+        uses: actions/checkout@v6
+        with:
+          ref: tmp/mobile-1.2.10-finalize
+          fetch-depth: 0
+
+      - name: Reconstruct exact Mobile 1.2.10 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/final-1.2.10/chunks/part-* > /tmp/final-files.tar.gz.b64
+          base64 --decode /tmp/final-files.tar.gz.b64 > /tmp/final-files.tar.gz
+          echo 'a5b7dd2b62330fad6c57a901c9f2e34c7af4af2b1dc22e577aa7a15c07c0b5dc  /tmp/final-files.tar.gz' | sha256sum -c -
+          test "$(wc -c < /tmp/final-files.tar.gz)" = '107081'
+          tar -xzf /tmp/final-files.tar.gz
+
+      - name: Run release source contract
+        working-directory: mobile-source/DSE-ERP-Mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/verify-android-source.py
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      - name: Compile shared contracts and Compose JVM source
+        working-directory: mobile-source/DSE-ERP-Mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :shared:jvmTest :composeApp:compileKotlinJvm --console=plain
+
+      - name: Commit clean verified source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -r .github/final-1.2.10/chunks
+          git rm .github/workflows/finalize-mobile-1.2.10.yml
+          git add mobile-source/DSE-ERP-Mobile
+          git diff --cached --check
+          git commit -m 'Finalize Mobile 1.2.10: Desktop 10.0.9 parity, centralized dialogs and auth'
+          git push origin HEAD:tmp/mobile-1.2.10-finalize
