@@ -26,11 +26,26 @@ jobs:
           distribution: temurin
           java-version: '25'
           cache: gradle
-      - name: Install Android SDK packages
+      - name: Install Android SDK command-line tools and packages
         run: |
+          set -euo pipefail
           test -n "$ANDROID_HOME"
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+          SDKMANAGER=""
+          for candidate in \
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "$ANDROID_HOME/cmdline-tools/bin/sdkmanager" \
+            "$ANDROID_HOME/tools/bin/sdkmanager"; do
+            if [ -x "$candidate" ]; then
+              SDKMANAGER="$candidate"
+              break
+            fi
+          done
+          if [ -z "$SDKMANAGER" ]; then
+            echo "Android sdkmanager is not installed on this runner; refusing to bypass SDK validation."
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
       - name: Verify Android/mobile source contracts
         working-directory: mobile-source/DSE-ERP-Mobile
         run: python3 scripts/verify-android-source.py
