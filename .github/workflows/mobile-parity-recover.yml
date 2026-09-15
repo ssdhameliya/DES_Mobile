@@ -1,0 +1,63 @@
+name: Recover Mobile Parity Source
+
+on:
+  push:
+    branches: [work/mobile-parity-current]
+    paths: ['.github/workflows/mobile-parity-recover.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  recover-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+      - name: Use hosted Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+      - name: Install Android SDK packages
+        run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Recover exact reviewed patch, bump same planned release, validate and commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show e2a353080fee248e01a3339c52be4219d33512de:mobile-source/DSE-ERP-Mobile/.mobile-parity.patch.gz.b64 > /tmp/mobile-parity.patch.gz.b64
+          base64 -d /tmp/mobile-parity.patch.gz.b64 > /tmp/mobile-parity.patch.gz
+          gzip -dc /tmp/mobile-parity.patch.gz > /tmp/mobile-parity.patch
+          cd mobile-source/DSE-ERP-Mobile
+          git apply --check /tmp/mobile-parity.patch
+          git apply /tmp/mobile-parity.patch
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('androidApp/build.gradle.kts')
+          s=p.read_text()
+          if 'versionName = "1.2.11"' not in s or 'versionCode = 131' not in s:
+              raise SystemExit('Unexpected mobile version baseline; refusing automatic bump')
+          s=s.replace('versionCode = 131','versionCode = 132',1).replace('versionName = "1.2.11"','versionName = "1.2.12"',1)
+          p.write_text(s)
+          PY
+          python3 scripts/verify-android-source.py
+          chmod +x gradlew
+          ./gradlew :shared:jvmTest :composeApp:compileKotlinJvm --console=plain
+          cd ../..
+          rm -f .github/workflows/mobile-parity-recover.yml
+          git add -A
+          CHANGED="$(git diff --cached --name-only)"
+          printf '%s\n' "$CHANGED"
+          printf '%s\n' "$CHANGED" | grep -q '^mobile-source/DSE-ERP-Mobile/' || { echo 'No mobile source changes recovered; refusing false release.' >&2; exit 1; }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Mobile 1.2.12: parity corrections and regression coverage'
+          git push origin HEAD:work/mobile-parity-current
