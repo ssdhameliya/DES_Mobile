@@ -1,3 +1,4 @@
+// Release 1.2.12 UAT retry after hosted Android SDK workflow correction.
 plugins {
     id("com.android.application")
     id("org.jetbrains.compose")
@@ -159,4 +160,3 @@ dependencies {
     implementation("androidx.biometric:biometric:1.1.0")
     implementation("androidx.fragment:fragment-ktx:1.9.0")
 }
-
