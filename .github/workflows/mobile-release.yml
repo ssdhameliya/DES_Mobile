@@ -124,12 +124,20 @@ jobs:
           java-version: '25'
           cache: gradle
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install Android SDK packages
         shell: bash
-        run: sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+        run: |
+          set -euo pipefail
+          SDKMANAGER=""
+          for candidate in \
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "$ANDROID_HOME/cmdline-tools/$(ls -1 "$ANDROID_HOME/cmdline-tools" 2>/dev/null | sort -Vr | head -1)/bin/sdkmanager" \
+            "$ANDROID_HOME/tools/bin/sdkmanager"; do
+            if [[ -x "$candidate" ]]; then SDKMANAGER="$candidate"; break; fi
+          done
+          [[ -n "$SDKMANAGER" ]] || { echo "sdkmanager not found under ANDROID_HOME=$ANDROID_HOME" >&2; exit 1; }
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
 
       - name: Configure UAT signing
         shell: bash
