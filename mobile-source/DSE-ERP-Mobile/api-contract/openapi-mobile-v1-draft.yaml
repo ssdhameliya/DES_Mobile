@@ -1,13 +1,13 @@
 openapi: 3.1.0
 info:
-  title: DSE ERP v10.0.5 Mobile Compatibility Contract
-  version: 1.2.4-v10.0.5-compatibility
+  title: DSE ERP v10.0.16 Android Mobile Compatibility Contract
+  version: 1.2.13-v10.0.16-compatibility
   description: >-
-    DSE ERP Mobile 1.2.4 consumes the existing v10.0.5 server API directly.
+    Jasvi Industries Android Mobile 1.2.13 consumes the DSE ERP v10.0.16 server API directly.
     Business state, permissions, numbering, payments, returns/refunds, inventory,
     reconciliation and masters remain server-owned. The reserved /api/mobile/v1
     delta-sync and standalone shipping endpoints are intentionally not advertised
-    because they are not implemented by the v10.0.5 server.
+    because they are not implemented by the v10.0.16 server.
 servers:
   - url: https://erp.example.invalid
 paths:
@@ -24,7 +24,7 @@ paths:
         '200': { description: Login or MFA challenge }
   /api/auth/registration/captcha:
     get:
-      summary: Issue the v10.0.5 registration CAPTCHA challenge
+      summary: Issue the v10.0.16 registration CAPTCHA challenge
       responses:
         '200': { description: CAPTCHA challenge }
   /api/auth/registration/request:
@@ -49,12 +49,12 @@ paths:
         '200': { description: Extended session token }
   /api/operations/sales/page:
     get:
-      summary: Sales Register page using v10.0.5 filters and paging
+      summary: Sales Register page using v10.0.16 filters and paging
       responses:
         '200': { description: Sales page }
   /api/operations/purchases/page:
     get:
-      summary: Purchase Register page using v10.0.5 filters and paging
+      summary: Purchase Register page using v10.0.16 filters and paging
       responses:
         '200': { description: Purchase page }
   /api/support/payments/with-id:

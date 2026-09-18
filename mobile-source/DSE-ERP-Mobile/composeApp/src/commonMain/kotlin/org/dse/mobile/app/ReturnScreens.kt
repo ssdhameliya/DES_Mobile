@@ -47,6 +47,8 @@ internal fun ReturnsWorkspace(api:DseErpHttpClient,p:PermissionContext,sales:Boo
     var confirm by remember{mutableStateOf<Pair<String,ReturnSummary>?>(null)}
     var actionTarget by remember{mutableStateOf<ReturnSummary?>(null)}
     var actionDetails by remember{mutableStateOf<ReturnDetails?>(null)}
+    var auditTarget by remember{mutableStateOf<ReturnDetails?>(null)}
+    var emailTarget by remember{mutableStateOf<ReturnDetails?>(null)}
     var filterOpen by remember{mutableStateOf(false)}
     val scope=rememberCoroutineScope()
 
@@ -109,6 +111,8 @@ internal fun ReturnsWorkspace(api:DseErpHttpClient,p:PermissionContext,sales:Boo
             add(PremiumActionSpec("View Return",{selected=r;details=d}))
             add(PremiumActionSpec("Share PDF",{msg=if(shareBusinessPdf(returnBusinessDocument(d)))"Return PDF opened" else "Unable to open return PDF"}))
             add(PremiumActionSpec("Excel",{msg=if(shareBusinessXlsx(returnBusinessDocument(d)))"Return Excel opened" else "Unable to open return Excel"}))
+            add(PremiumActionSpec("Send Email",{emailTarget=d}))
+            add(PremiumActionSpec("Record Audit",{auditTarget=d}))
             add(PremiumActionSpec("Open Original",{onDeepLink("dseerp://${if(sales)"sales" else "purchase"}/${urlEncodeReturn(d.invoice)}")}))
             if(p.can(module,"APPROVE")){
                 add(PremiumActionSpec("Approve Return",{scope.launch{when(val x=api.approveReturn(d.no)){is ApiResult.Success->{msg=x.value.message;refresh++};else->msg=x.readableMessage()}}},enabled=pending,disabledReason="Only returns pending approval can be approved."))
@@ -123,6 +127,8 @@ internal fun ReturnsWorkspace(api:DseErpHttpClient,p:PermissionContext,sales:Boo
             if(p.can(module,"DELETE"))add(PremiumActionSpec("Delete Return",{confirm="delete" to r},destructive=true,enabled=!terminal&&d.refund<=0.005,disabledReason=when{terminal->"This Return is already terminal.";d.refund>0.005->"A refunded Return cannot be deleted.";else->null}))
         },{actionTarget=null;actionDetails=null})
     }
+    auditTarget?.let{d->ReferenceAuditDialog(api,if(sales)"SALES_RETURN" else "PURCHASE_RETURN",d.no){auditTarget=null}}
+    emailTarget?.let{d->ReturnEmailDialog(api,d,username,{emailTarget=null}){msg=it;emailTarget=null;refresh++}}
     if(filterOpen)ReturnFilterDialog(filter,{filterOpen=false}){filter=it;page=0;filterOpen=false}
 
     if(selected!=null&&details!=null){
@@ -181,7 +187,7 @@ internal fun ReturnCreateDialog(api:DseErpHttpClient,source:ReturnSource,onClose
                     val invoiced=sourceRows.sumOf{it.quantity}
                     val previously=(already[code]?:0.0).coerceAtMost(invoiced)
                     val rates=sourceRows.map{it.rate}.distinct()
-                    val description=sourceRows.mapNotNull{it.itemDescription?.takeIf(String::isNotBlank)}.distinct().joinToString(" / ").ifBlank{code}
+                    val description=sourceRows.mapNotNull{it.itemDescription?.takeIf { value -> value.isNotBlank() }}.distinct().joinToString(" / ").ifBlank{code}
                     drafts+=ReturnLineDraft(code,description,sourceRows.size,rates.singleOrNull(),invoiced,previously,(invoiced-previously).coerceAtLeast(0.0))
                 }
                 msg="Return eligibility follows the certified ERP API contract at item-code level. When the same item appears on multiple invoice lines, Mobile combines those lines and the server allocates the returned quantity across the original invoice snapshots in its authoritative order. Return amount is calculated by the server."
@@ -209,6 +215,17 @@ private fun RefundDialog(api:DseErpHttpClient,d:ReturnDetails,username:String,on
 }
 
 @Composable
+private fun ReturnEmailDialog(api:DseErpHttpClient,d:ReturnDetails,username:String,onClose:()->Unit,onDone:(String)->Unit){
+    var recipient by remember{mutableStateOf("")}
+    var subject by remember{mutableStateOf("${businessName()} ${d.type.lowercase().replaceFirstChar{it.uppercase()}} ${d.no}")}
+    var body by remember{mutableStateOf("Dear ${d.party},\n\nPlease find return document ${d.no} attached.\n\nRegards,\n${businessName()}")}
+    var msg by remember{mutableStateOf("Loading party email…")}
+    val scope=rememberCoroutineScope()
+    LaunchedEffect(d.no){when(val r=api.returnPartyEmail(d.no)){is ApiResult.Success->{recipient=r.value.value;msg=if(recipient.isBlank())"Party email is not configured" else "Return PDF will be attached"};else->msg=r.readableMessage()}}
+    PremiumAlertDialog(onDismissRequest=onClose,title={Text("Email ${d.no}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){DseField("Recipient",recipient,singleLine=true,required=true,onValue={recipient=it});DseField("Subject",subject,singleLine=true,required=true,onValue={subject=it});DseField("Message",body,onValue={body=it});DseMessageFeedback(msg)}},confirmButton={PremiumPrimaryButton("Send Email",{scope.launch{val payload=returnBusinessDocument(d);val bytes=businessDocumentPdf(payload);val req=BusinessEmailRequest(recipient.trim(),subject.trim(),body,"Return_${d.no}.pdf",encodeBase64Portable(bytes));when(val r=api.sendBusinessEmail(req)){is ApiResult.Success->{if(r.value.success){onDone(r.value.message.ifBlank{"Return email sent"})}else msg=r.value.message};else->msg=r.readableMessage()}}},enabled=recipient.contains("@"),leadingIcon=Icons.Rounded.Email)},dismissButton={PremiumSecondaryButton("Cancel",onClose)})
+}
+
+@Composable
 private fun ReturnAttachmentDialog(api:DseErpHttpClient,d:ReturnDetails,onClose:()->Unit,onDone:(String)->Unit){
     var msg by remember{mutableStateOf("")};val scope=rememberCoroutineScope()
     PremiumAlertDialog(onDismissRequest=onClose,title={Text("Return Attachment • ${d.no}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){if(d.attachment.isNotBlank()){Text("Current attachment: ${returnFileName(d.attachment,"attachment")}");Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){OutlinedButton(onClick={scope.launch{when(val f=api.returnAttachmentFile(d.no)){is ApiResult.Success->{if(!platformShareFile("Return ${d.no} attachment",returnFileName(d.attachment,"return-${d.no}.bin"),f.value))msg="Unable to open attachment"};else->msg=f.readableMessage()}}}){Icon(Icons.Rounded.OpenInNew,null);Text("Open")};OutlinedButton(onClick={scope.launch{when(val x=api.deleteReturnAttachment(d.no)){is ApiResult.Success->onDone("Return attachment removed");else->msg=x.readableMessage()}}}){Icon(Icons.Rounded.Delete,null);Text("Remove")}}};Text("Attach supporting return proof/document.");DseMessageFeedback(msg)}},confirmButton={PremiumPrimaryButton("Choose & Upload",{platformPickAttachment { picked->if(picked.fileName.isNullOrBlank()||picked.base64.isNullOrBlank()){msg=picked.error?:"No attachment selected";return@platformPickAttachment};scope.launch{try{when(val r=api.uploadReturnAttachment(d.no,picked.fileName!!,decodeBase64Portable(picked.base64!!))){is ApiResult.Success->onDone("Return attachment saved");else->msg=r.readableMessage()}}catch(t:Throwable){msg=t.message?:"Attachment upload failed"}} }},leadingIcon=Icons.Rounded.AttachFile)},dismissButton={PremiumSecondaryButton("Close",onClose)})
@@ -224,7 +241,7 @@ private fun ReturnNotesDialog(api:DseErpHttpClient,d:ReturnDetails,onClose:()->U
 @Composable private fun detailReturnRows(d:ReturnDetails)=detailReturnRows(listOf("Original Invoice" to d.invoice,"Party" to d.party,"Return Date" to d.date,"Return Total" to money(d.total),"Already Refunded" to money(d.refund),"Refundable" to money((d.total-d.refund).coerceAtLeast(0.0)),"Payment Terms" to d.paymentTerms,"Currency" to d.currency,"Notes" to d.notes))
 @Composable private fun detailReturnRows(rows:List<Pair<String,String>>){detailRows(rows)}
 @Composable private fun detailReturnSource(s:ReturnSource){Surface(color=MaterialTheme.colorScheme.surfaceVariant,shape=MaterialTheme.shapes.medium,modifier=Modifier.fillMaxWidth()){Column(Modifier.padding(10.dp)){Text("Original ${s.type}: ${s.invoiceNo}",fontWeight=FontWeight.SemiBold);Text(s.partyName);Text("Party and invoice are locked from the source document; no manual internal IDs.",style=MaterialTheme.typography.bodySmall)}}}
-private fun returnShareText(d:ReturnDetails)=buildString{appendLine("Jasvi Industries • ${d.type} ${d.no}");appendLine("Original: ${d.invoice}");appendLine("Party: ${d.party}");appendLine("Return total: ${money(d.total)}");appendLine("Refunded: ${money(d.refund)}");appendLine("Return status: ${d.status} • Refund: ${d.refundStatus}")}
+private fun returnShareText(d:ReturnDetails)=buildString{appendLine("${businessName()} • ${d.type} ${d.no}");appendLine("Original: ${d.invoice}");appendLine("Party: ${d.party}");appendLine("Return total: ${money(d.total)}");appendLine("Refunded: ${money(d.refund)}");appendLine("Return status: ${d.status} • Refund: ${d.refundStatus}")}
 private fun returnFileName(path:String,fallback:String):String=path.replace('\\','/').substringAfterLast('/').ifBlank{fallback}
 private fun urlEncodeReturn(value:String):String=value.encodeToByteArray().joinToString(""){b->val n=b.toInt() and 0xff;val c=n.toChar();if((c in 'a'..'z')||(c in 'A'..'Z')||(c in '0'..'9')||c in "-_.~")c.toString() else "%"+n.toString(16).uppercase().padStart(2,'0')}
 

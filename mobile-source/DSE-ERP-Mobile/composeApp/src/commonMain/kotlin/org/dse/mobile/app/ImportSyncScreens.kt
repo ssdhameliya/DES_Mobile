@@ -105,7 +105,7 @@ private fun ImportModule.supportsStrategy()=this in setOf(ImportModule.ITEMS,Imp
   }
   DseSelect("Module",module.label,ImportModule.entries.map{it.label},required=true,onValue={v->module=ImportModule.entries.first{it.label==v};sheet=null;mapping=emptyMap();summary=null;strategy=ImportStrategy.CREATE_ONLY})
   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){
-   PremiumPrimaryButton("Select File",{scope.launch{sheet=pickImportSpreadsheet();mapping=sheet?.let{autoMapImport(it,module)}?:emptyMap();summary=null;msg=sheet?.let{"${it.fileName} • ${it.rows.size} row(s)${it.platformNotice.takeIf(String::isNotBlank)?.let{n->" • $n"}.orEmpty()}"}?:"No file selected"}},Modifier.weight(1f),enabled=!busy,leadingIcon=Icons.Rounded.UploadFile)
+   PremiumPrimaryButton("Select File",{scope.launch{sheet=pickImportSpreadsheet();mapping=sheet?.let{autoMapImport(it,module)}?:emptyMap();summary=null;msg=sheet?.let{"${it.fileName} • ${it.rows.size} row(s)${it.platformNotice.takeIf { value -> value.isNotBlank() }?.let{n->" • $n"}.orEmpty()}"}?:"No file selected"}},Modifier.weight(1f),enabled=!busy,leadingIcon=Icons.Rounded.UploadFile)
    PremiumSecondaryButton("Template",{shareImportTemplate(module)},Modifier.weight(1f),icon=Icons.Rounded.Download)
   }
   Surface(shape=MaterialTheme.shapes.medium,color=MaterialTheme.colorScheme.surface,border=androidx.compose.foundation.BorderStroke(1.dp,MaterialTheme.colorScheme.outline.copy(.30f)),modifier=Modifier.fillMaxWidth()){

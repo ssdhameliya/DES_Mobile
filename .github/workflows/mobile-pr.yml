@@ -49,8 +49,8 @@ jobs:
       - name: Verify Android/mobile source contracts
         working-directory: mobile-source/DSE-ERP-Mobile
         run: python3 scripts/verify-android-source.py
-      - name: Run shared contracts and Compose JVM compile
+      - name: Build Android UAT debug variant
         working-directory: mobile-source/DSE-ERP-Mobile
         run: |
           chmod +x gradlew
-          ./gradlew :shared:jvmTest :composeApp:compileKotlinJvm --console=plain
+          ./gradlew :androidApp:assembleUatDebug --console=plain

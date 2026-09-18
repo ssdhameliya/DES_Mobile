@@ -282,6 +282,7 @@ internal fun PartySelector(
     selected:MasterParty?,
     modifier:Modifier=Modifier,
     required:Boolean=true,
+    allowCreate:Boolean=false,
     onSelected:(MasterParty)->Unit,
     onCleared:()->Unit={},
 ){
@@ -290,6 +291,7 @@ internal fun PartySelector(
     var expanded by remember{mutableStateOf(false)}
     var busy by remember{mutableStateOf(false)}
     var error by remember{mutableStateOf("")}
+    var creating by remember{mutableStateOf(false)}
     val scope=rememberCoroutineScope()
 
     suspend fun searchNow(term:String=query){
@@ -343,6 +345,11 @@ internal fun PartySelector(
                 )}
             }
         }
+        if(allowCreate){
+            TextButton(onClick={creating=true}){
+                Icon(Icons.Rounded.PersonAdd,null);Spacer(Modifier.width(5.dp));Text("+ New ${if(type.equals("CUSTOMER",true))"Customer" else "Supplier"}")
+            }
+        }
         selected?.let{p->
             Surface(color=DseIndigo.copy(.045f),shape=RoundedCornerShape(16.dp),border=BorderStroke(1.dp,DseIndigo.copy(.16f)),modifier=Modifier.fillMaxWidth()){
                 Column(Modifier.padding(10.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){
@@ -357,6 +364,14 @@ internal fun PartySelector(
                     if(!p.phone.isNullOrBlank()) detailRows(listOf("Phone" to p.phone.orEmpty()))
                     if(!p.address.isNullOrBlank()) detailRows(listOf("Address" to p.address.orEmpty()))
                 }
+            }
+        }
+    }
+    if(creating)PartyEditor(api,type,null,{creating=false}){draft->
+        scope.launch{
+            when(val r=api.createParty(draft)){
+                is ApiResult.Success->{val created=r.value;onSelected(created);query="${created.partyCode} • ${created.name}";creating=false;error=""}
+                else->error=r.readableMessage()
             }
         }
     }
@@ -376,6 +391,7 @@ internal fun ItemSelector(
     var expanded by remember{mutableStateOf(false)}
     var busy by remember{mutableStateOf(false)}
     var error by remember{mutableStateOf("")}
+    var creating by remember{mutableStateOf(false)}
     val scope=rememberCoroutineScope()
 
     suspend fun searchNow(term:String=query){
@@ -1264,4 +1280,23 @@ internal fun shareCsvFile(title:String,fileName:String,headers:List<String>,rows
         rows.forEach{row->append(row.joinToString(","){esc(it)}).append('\n')}
     }
     return platformShareFile(title,fileName,csv.encodeToByteArray())
+}
+
+@Composable
+internal fun RegisterExportButtons(
+    title:String,
+    baseName:String,
+    headers:List<String>,
+    rows:List<List<String>>,
+    modifier:Modifier=Modifier,
+    onMessage:(String)->Unit={},
+){
+    Row(modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp)){
+        PremiumSecondaryButton("Excel",{
+            onMessage(if(platformShareTabularExport(title,baseName,headers,rows,"XLSX"))"Excel export prepared" else "Unable to prepare Excel export")
+        },Modifier.weight(1f),enabled=rows.isNotEmpty(),icon=Icons.Rounded.TableView)
+        PremiumSecondaryButton("PDF",{
+            onMessage(if(platformShareTabularExport(title,baseName,headers,rows,"PDF"))"PDF export prepared" else "Unable to prepare PDF export")
+        },Modifier.weight(1f),enabled=rows.isNotEmpty(),icon=Icons.Rounded.PictureAsPdf)
+    }
 }

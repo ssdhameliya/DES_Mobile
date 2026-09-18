@@ -237,7 +237,7 @@ private fun buildBusinessPdfPage(p:BusinessDocumentPayload,lines:List<DocumentLi
     }
 
     // Footer.
-    c.stroke(117,153,198);c.line(left,34.0,right,34.0);c.fill(78,90,108);c.text(left,20.0,"Generated from Jasvi Industries ERP business data",6.2,false);c.textRight(right,20.0,"${p.documentType} ${p.number}",6.2,true)
+    c.stroke(117,153,198);c.line(left,34.0,right,34.0);c.fill(78,90,108);c.text(left,20.0,"Generated from ${businessName()} ERP business data",6.2,false);c.textRight(right,20.0,"${p.documentType} ${p.number}",6.2,true)
     return PdfPage(c.build())
 }
 
@@ -289,7 +289,7 @@ private fun storedZip(entries:List<Pair<String,ByteArray>>):ByteArray{
 internal fun businessDocumentXlsx(payload:BusinessDocumentPayload):ByteArray{
     data class XRow(val values:List<String>,val style:Int=0,val numeric:Set<Int> = emptySet())
     val rows=mutableListOf<XRow>()
-    rows += XRow(listOf("JASVI INDUSTRIES"),1)
+    rows += XRow(listOf(businessName().uppercase()),1)
     rows += XRow(listOf(payload.documentType.uppercase()),2)
     rows += XRow(listOf("Document No",payload.number,"Date",payload.date,"Due / Delivery",payload.dueDate.ifBlank{payload.deliveryDate}),3)
     rows += XRow(listOf(payload.partyLabel,payload.partyName,"GSTIN",payload.partyGstin),3)
@@ -333,5 +333,5 @@ internal fun shareBusinessXlsx(payload:BusinessDocumentPayload):Boolean=platform
 internal fun businessEmailBody(payload:BusinessDocumentPayload):String = buildString {
     append("Dear ").append(payload.partyName.ifBlank{payload.partyLabel}).append(",\n\n")
     append("Please find your ").append(payload.documentType.lowercase()).append(" ").append(payload.number).append(" attached.\n\n")
-    append("Regards,\nJasvi Industries")
+    append("Regards,\n").append(businessName())
 }

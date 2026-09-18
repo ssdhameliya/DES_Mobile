@@ -69,6 +69,14 @@ object ExistingErpRoutes {
     const val REFERENCE_FORMATS="/api/master/reference-formats"
 
     const val SUPPORT="/api/support"
+    const val SETTINGS="$SUPPORT/settings"
+    const val AUDIT="/api/audit"
+    const val CUSTOMER_360="/api/customer-360"
+    const val SUPPLIER_360="/api/supplier-360"
+    const val STORAGE="/api/storage"
+    const val SETUP="/api/setup"
+    const val UPDATES="/api/updates"
+    const val SERVER_RESOURCES="/api/authority/resources"
     const val PAYMENTS="$SUPPORT/payments"
     const val PAYMENTS_WITH_ID="$SUPPORT/payments/with-id"
     const val GLOBAL_SEARCH="$SUPPORT/search"
@@ -77,12 +85,17 @@ object ExistingErpRoutes {
     const val COMMUNICATIONS="$SUPPORT/communications"
     const val ACTIVITY="$SUPPORT/activity"
     const val BUSINESS_EMAIL="/api/authority/email"
+    const val BUSINESS_EMAIL_RESEND="$BUSINESS_EMAIL/resend"
+    const val BUSINESS_EMAIL_SETTINGS="$BUSINESS_EMAIL/settings"
+    const val BUSINESS_EMAIL_TEST="$BUSINESS_EMAIL/test"
     const val CANONICAL_DOCUMENT="/api/documents/render"
 
     const val INSIGHTS="/api/insights"
     const val INSIGHTS_DASHBOARD="$INSIGHTS/dashboard"
     const val REMINDERS="$INSIGHTS/reminders"
     const val NOTIFICATIONS="$INSIGHTS/notifications"
+    const val NOTIFICATION_PREFERENCES="$INSIGHTS/notification-preferences"
+    const val SHELL_COUNTS="$INSIGHTS/shell-counts"
     const val REPORTS="$INSIGHTS/reports"
     const val REPORT_FILTERS="$INSIGHTS/reports/filters"
 
@@ -90,6 +103,9 @@ object ExistingErpRoutes {
     const val ADMIN_USERS="$ADMIN/users"
     const val ADMIN_ROLES="$ADMIN/roles"
     const val ADMIN_PERMISSIONS="$ADMIN/permissions"
+    const val ADMIN_PERMISSION_SET="$ADMIN/permissions/set"
+    const val ADMIN_REGISTRATION_ROLE="$ADMIN/registration-role"
+    const val ADMIN_REGISTRATIONS="$ADMIN/registrations"
 }
 
 object MobileV1Routes {
