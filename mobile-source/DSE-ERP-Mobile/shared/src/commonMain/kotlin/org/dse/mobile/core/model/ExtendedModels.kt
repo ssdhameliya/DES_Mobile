@@ -2,15 +2,15 @@ package org.dse.mobile.core.model
 
 import kotlinx.serialization.Serializable
 
-// Register filter contracts mirror the v10.0.5 server query parameters.
+// Register filter contracts mirror the server 10.0.16 query parameters.
 data class SalesFilter(
     val q:String="", val invoice:String="", val customer:String="", val from:String="", val to:String="",
     val paymentStatus:String="", val due:String="", val mail:String="", val whatsapp:String="",
-    val invoiceType:String="", val documentStatus:String="", val minAmount:Double?=null, val maxAmount:Double?=null,
+    val invoiceType:String="", val documentStatus:String="", val returnStatus:String="", val minAmount:Double?=null, val maxAmount:Double?=null,
 )
 data class PurchaseFilter(
     val q:String="", val supplier:String="", val from:String="", val to:String="",
-    val paymentStatus:String="", val mail:String="", val documentStatus:String="",
+    val paymentStatus:String="", val due:String="", val mail:String="", val documentStatus:String="", val returnStatus:String="",
 )
 data class FinanceFilter(val q:String="", val mode:String="", val period:String="", val type:String="")
 data class ReturnFilter(val q:String="", val party:String="", val status:String="", val from:String="", val to:String="")
@@ -45,13 +45,13 @@ data class BankTransactionFilter(val q:String="", val status:String="", val dire
 @Serializable data class ProfileUpdate(val fullName:String="",val email:String="",val department:String="",val branch:String="")
 @Serializable data class ChangePasswordRequest(val userId:Int=0,val currentPassword:String="",val password:String="")
 
-@Serializable data class AdminUser(val id:Int=0,val username:String="",val fullName:String?=null,val email:String?=null,val role:String="",val department:String?=null,val accessLevel:String?=null,val branch:String?=null,val active:Boolean=true,val locked:Boolean=false,val mfaEnabled:Boolean=false,val lastLogin:String?=null)
-@Serializable data class AdminUserSaveRequest(val id:Int?=null,val username:String="",val password:String="",val fullName:String="",val email:String="",val role:String="",val department:String="",val accessLevel:String="",val branch:String="",val active:Boolean=true,val locked:Boolean=false,val mfaEnabled:Boolean=false)
+@Serializable data class AdminUser(val id:Int=0,val username:String="",val fullName:String?=null,val email:String?=null,val role:String="",val department:String?=null,val accessLevel:String?=null,val branch:String?=null,val active:Boolean=true,val locked:Boolean=false,val mfaEnabled:Boolean=false,val lastLogin:String?=null,val rowVersion:Long=0)
+@Serializable data class AdminUserSaveRequest(val id:Int?=null,val username:String="",val password:String="",val fullName:String="",val email:String="",val role:String="",val department:String="",val accessLevel:String="",val branch:String="",val active:Boolean=true,val locked:Boolean=false,val mfaEnabled:Boolean=false,val rowVersion:Long=0)
 @Serializable data class AdminRole(val id:Int=0,val code:String="",val displayName:String="",val description:String?=null,val active:Boolean=true,val userCount:Long=0)
 @Serializable data class AdminRoleSaveRequest(val id:Int?=null,val name:String="",val description:String="",val active:Boolean=true)
 @Serializable data class AdminPermission(val id:Long=0,val module:String="",val action:String="",val description:String="",val allowed:Boolean=false)
 @Serializable data class AdminPermissionSave(val id:Long=0,val allowed:Boolean=false)
-@Serializable data class AdminPermissionSaveRequest(val role:String="",val permissions:List<AdminPermissionSave> = emptyList())
+@Serializable data class AdminPermissionSaveRequest(val role:String="",val permissions:List<AdminPermissionSave> = emptyList(),val rowVersion:Long=0)
 @Serializable data class PasswordResetRequest(val password:String="")
 @Serializable data class LockRequest(val locked:Boolean=false)
 
@@ -67,8 +67,8 @@ data class BankTransactionFilter(val q:String="", val status:String="", val dire
 @Serializable data class BankAudit(val id:Long?=null,val eventType:String="",val detail:String="",val previousStatus:String="",val newStatus:String="",val performedBy:String="",val createdAt:String="")
 
 @Serializable data class CompatibilityInfo(
-    val serverBaseline:String="10.0.5",
-    val apiContract:String="server-10.0.5-compatible-v4",
+    val serverBaseline:String="10.0.16",
+    val apiContract:String="server-10.0.16-compatible-v5",
     val minimumMobile:String="1.2.3",
-    val latestMobile:String="1.2.4",
+    val latestMobile:String="1.2.13",
 )

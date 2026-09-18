@@ -29,6 +29,8 @@ private fun PermissionContext.canOpen(d:MoreDestination):Boolean=when(d){
     MoreDestination.MASTERS->can("CUSTOMERS")||can("SUPPLIERS")||can("INVENTORY")||can("MASTERS")||isAdmin()
     MoreDestination.INVENTORY->can("INVENTORY")
     MoreDestination.PURCHASE_RECON->can("PURCHASE_RECON")
+    MoreDestination.AUDIT->isAdmin()||can("AUDIT")||can("AUDIT","VIEW")
+    MoreDestination.SETTINGS->isAdmin()||can("SETTINGS")
     MoreDestination.COMMUNICATIONS,MoreDestination.NOTIFICATIONS->can("COMMUNICATION")
     MoreDestination.REMINDERS->can("REMINDERS")
     MoreDestination.REPORTS->can("REPORTS")||can("SALES")||can("PURCHASE")
@@ -38,14 +40,14 @@ private fun PermissionContext.canOpen(d:MoreDestination):Boolean=when(d){
     MoreDestination.SYNC,MoreDestination.ABOUT->true
 }
 
-@Composable internal fun MoreWorkspace(api:DseErpHttpClient,p:PermissionContext,username:String,destination:MoreDestination?,onDestination:(MoreDestination?)->Unit,onDeepLink:(String)->Unit,openTarget:RecordTarget?=null,onTargetConsumed:()->Unit={}){
+@Composable internal fun MoreWorkspace(api:DseErpHttpClient,p:PermissionContext,username:String,destination:MoreDestination?,onDestination:(MoreDestination?)->Unit,onDeepLink:(String)->Unit,onRecordTarget:(RecordTarget)->Unit,openTarget:RecordTarget?=null,onTargetConsumed:()->Unit={}){
     if(destination==null){
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).verticalScroll(rememberScrollState()).padding(horizontal=14.dp,vertical=12.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
             Box(Modifier.fillMaxWidth().background(DseHeroGradient,androidx.compose.foundation.shape.RoundedCornerShape(26.dp))){
                 Row(Modifier.padding(16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
                     DseBrandMark(compact=true,dark=true)
                     Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)){
-                        Text("Explore Jasvi Industries",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.ExtraBold,color=androidx.compose.ui.graphics.Color.White)
+                        Text("Explore ${BusinessBrandingState.displayName}",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.ExtraBold,color=androidx.compose.ui.graphics.Color.White)
                         Text("Every business module, one mobile workspace.",style=MaterialTheme.typography.bodySmall,color=androidx.compose.ui.graphics.Color.White.copy(.78f))
                     }
                     Icon(Icons.Rounded.AutoAwesome,null,tint=androidx.compose.ui.graphics.Color.White.copy(.85f))
@@ -86,9 +88,11 @@ private fun PermissionContext.canOpen(d:MoreDestination):Boolean=when(d){
             MoreDestination.QUOTATIONS->QuotationsWorkspace(api,p,username,openTarget,onTargetConsumed,onDeepLink)
             MoreDestination.SALES_RETURNS->ReturnsWorkspace(api,p,true,username,openTarget,onTargetConsumed,onDeepLink)
             MoreDestination.PURCHASE_RETURNS->ReturnsWorkspace(api,p,false,username,openTarget,onTargetConsumed,onDeepLink)
-            MoreDestination.MASTERS->MasterDataWorkspace(api,p,openTarget,onTargetConsumed)
+            MoreDestination.MASTERS->MasterDataWorkspace(api,p,onRecordTarget,openTarget,onTargetConsumed)
             MoreDestination.INVENTORY->InventoryWorkspace(api,p,username,openTarget,onTargetConsumed)
-            MoreDestination.PURCHASE_RECON->PurchaseReconWorkspace(api,p,openTarget,onTargetConsumed)
+            MoreDestination.PURCHASE_RECON->PurchaseReconWorkspace(api,p,onRecordTarget,openTarget,onTargetConsumed)
+            MoreDestination.AUDIT->GlobalAuditWorkspace(api,p,onDeepLink)
+            MoreDestination.SETTINGS->SettingsWorkspace(api,p)
             MoreDestination.COMMUNICATIONS->CommunicationWorkspace(api,p)
             MoreDestination.REMINDERS->ReminderWorkspace(api,p,username,openTarget,onTargetConsumed)
             MoreDestination.NOTIFICATIONS->NotificationWorkspace(api,p,onDeepLink)
@@ -108,6 +112,8 @@ private fun moreAccent(d:MoreDestination)=when(d){
     MoreDestination.SALES_RETURNS,MoreDestination.PURCHASE_RETURNS->DseWarning
     MoreDestination.MASTERS,MoreDestination.INVENTORY->DseInfo
     MoreDestination.PURCHASE_RECON,MoreDestination.SYNC->DseSuccess
+    MoreDestination.AUDIT->DseInfo
+    MoreDestination.SETTINGS->DseIndigo
     MoreDestination.COMMUNICATIONS,MoreDestination.NOTIFICATIONS,MoreDestination.REMINDERS->DseDanger
     MoreDestination.PROFILE,MoreDestination.ADMIN->DseIndigo
     MoreDestination.IMPORT->DseWarning
@@ -122,13 +128,15 @@ private fun moreSubtitle(d:MoreDestination)=when(d){
     MoreDestination.MASTERS->"Customers, suppliers, items and values"
     MoreDestination.INVENTORY->"Stock balance, location and movement"
     MoreDestination.PURCHASE_RECON->"Supplier and statement matching"
+    MoreDestination.AUDIT->"Field-level business, financial and document history"
+    MoreDestination.SETTINGS->"Company, payment, invoice, notifications, email and system"
     MoreDestination.COMMUNICATIONS->"Email and communication history"
     MoreDestination.REMINDERS->"Follow-ups and due actions"
     MoreDestination.NOTIFICATIONS->"Alerts and ERP updates"
     MoreDestination.REPORTS->"Business insights and exports"
     MoreDestination.PROFILE->"Profile, password and security"
     MoreDestination.ADMIN->"Users, roles and permissions"
-    MoreDestination.IMPORT->"Bring business data into Jasvi Industries"
+    MoreDestination.IMPORT->"Bring business data into ${businessName()}"
     MoreDestination.SYNC->"Offline cache and sync status"
     MoreDestination.ABOUT->"App and environment information"
 }
@@ -141,6 +149,8 @@ private fun moreIcon(d:MoreDestination)=when(d){
     MoreDestination.MASTERS->Icons.Rounded.Dataset
     MoreDestination.INVENTORY->Icons.Rounded.Inventory2
     MoreDestination.PURCHASE_RECON->Icons.Rounded.FactCheck
+    MoreDestination.AUDIT->Icons.Rounded.History
+    MoreDestination.SETTINGS->Icons.Rounded.Settings
     MoreDestination.COMMUNICATIONS->Icons.Rounded.Forum
     MoreDestination.REMINDERS->Icons.Rounded.Alarm
     MoreDestination.NOTIFICATIONS->Icons.Rounded.Notifications
@@ -153,20 +163,20 @@ private fun moreIcon(d:MoreDestination)=when(d){
 }
 
 private enum class MasterMode(val label:String){CUSTOMERS("Customers"),SUPPLIERS("Suppliers"),ITEMS("Items"),LOOKUPS("Master Values")}
-@Composable private fun MasterDataWorkspace(api:DseErpHttpClient,p:PermissionContext,openTarget:RecordTarget?=null,onTargetConsumed:()->Unit={}){
+@Composable private fun MasterDataWorkspace(api:DseErpHttpClient,p:PermissionContext,onRecordTarget:(RecordTarget)->Unit,openTarget:RecordTarget?=null,onTargetConsumed:()->Unit={}){
     val allowed=MasterMode.entries.filter{m->when(m){MasterMode.CUSTOMERS->p.can("CUSTOMERS");MasterMode.SUPPLIERS->p.can("SUPPLIERS");MasterMode.ITEMS->p.can("INVENTORY");MasterMode.LOOKUPS->p.can("MASTERS")}}
     var mode by remember{mutableStateOf(allowed.firstOrNull()?:MasterMode.CUSTOMERS)}
     LaunchedEffect(openTarget?.moduleKey){when(openTarget?.moduleKey?.uppercase()){"CUSTOMER","CUSTOMERS"->if(MasterMode.CUSTOMERS in allowed)mode=MasterMode.CUSTOMERS;"SUPPLIER","SUPPLIERS"->if(MasterMode.SUPPLIERS in allowed)mode=MasterMode.SUPPLIERS;"ITEM","INVENTORY"->if(MasterMode.ITEMS in allowed)mode=MasterMode.ITEMS;"MASTER","MASTERS","LOOKUP"->if(MasterMode.LOOKUPS in allowed)mode=MasterMode.LOOKUPS}}
-    Column(Modifier.fillMaxSize()){ScrollableTabRow(allowed.indexOf(mode).coerceAtLeast(0)){allowed.forEach{m->Tab(selected=mode==m,onClick={mode=m},text={Text(m.label)})}};when(mode){MasterMode.CUSTOMERS->PartyMasterScreen(api,p,"CUSTOMER",openTarget,onTargetConsumed);MasterMode.SUPPLIERS->PartyMasterScreen(api,p,"SUPPLIER",openTarget,onTargetConsumed);MasterMode.ITEMS->ItemMasterScreen(api,p,openTarget,onTargetConsumed);MasterMode.LOOKUPS->LookupScreen(api,p)}}
+    Column(Modifier.fillMaxSize()){ScrollableTabRow(allowed.indexOf(mode).coerceAtLeast(0)){allowed.forEach{m->Tab(selected=mode==m,onClick={mode=m},text={Text(m.label)})}};when(mode){MasterMode.CUSTOMERS->PartyMasterScreen(api,p,"CUSTOMER",onRecordTarget,openTarget,onTargetConsumed);MasterMode.SUPPLIERS->PartyMasterScreen(api,p,"SUPPLIER",onRecordTarget,openTarget,onTargetConsumed);MasterMode.ITEMS->ItemMasterScreen(api,p,openTarget,onTargetConsumed);MasterMode.LOOKUPS->LookupScreen(api,p)}}
 }
 
-@Composable private fun PartyMasterScreen(api:DseErpHttpClient,p:PermissionContext,type:String,openTarget:RecordTarget?=null,onTargetConsumed:()->Unit={}){
+@Composable private fun PartyMasterScreen(api:DseErpHttpClient,p:PermissionContext,type:String,onRecordTarget:(RecordTarget)->Unit,openTarget:RecordTarget?=null,onTargetConsumed:()->Unit={}){
     val module=if(type=="CUSTOMER")"CUSTOMERS" else "SUPPLIERS"
-    var q by remember{mutableStateOf("")};var rows by remember{mutableStateOf<List<MasterParty>>(emptyList())};var msg by remember{mutableStateOf("")};var refresh by remember{mutableIntStateOf(0)};var edit by remember{mutableStateOf<MasterParty?>(null)};var editing by remember{mutableStateOf<MasterParty?>(null)};var creating by remember{mutableStateOf(false)};var deleting by remember{mutableStateOf<MasterParty?>(null)};val scope=rememberCoroutineScope()
+    var q by remember{mutableStateOf("")};var rows by remember{mutableStateOf<List<MasterParty>>(emptyList())};var msg by remember{mutableStateOf("")};var refresh by remember{mutableIntStateOf(0)};var edit by remember{mutableStateOf<MasterParty?>(null)};var editing by remember{mutableStateOf<MasterParty?>(null)};var creating by remember{mutableStateOf(false)};var deleting by remember{mutableStateOf<MasterParty?>(null)};var view360 by remember{mutableStateOf<MasterParty?>(null)};val scope=rememberCoroutineScope()
     LaunchedEffect(api,refresh){when(val r=api.listParties(type)){is ApiResult.Success->{rows=r.value;msg="${rows.size} ${type.lowercase()} record(s)${if(r.source==ApiDataSource.CACHE)" • cached" else ""}"};else->msg=r.readableMessage()}}
     LaunchedEffect(openTarget?.moduleKey,openTarget?.reference,rows.size){val t=openTarget;val expected=if(type=="CUSTOMER")setOf("CUSTOMER","CUSTOMERS")else setOf("SUPPLIER","SUPPLIERS");if(t!=null&&t.moduleKey.uppercase() in expected){if(t.reference=="__CREATE__"){creating=true;onTargetConsumed()}else if(t.reference.isNotBlank()&&rows.isNotEmpty()){q=t.reference;edit=rows.firstOrNull{it.partyCode.equals(t.reference,true)||it.id?.toLong()==t.recordId};onTargetConsumed()}}}
     val shown=remember(rows,q){if(q.isBlank())rows else rows.filter{listOf(it.partyCode,it.name,it.gstin,it.phone,it.email).any{x->x.orEmpty().contains(q,true)}}}
-    DseRegisterShell(if(type=="CUSTOMER")"Customers / CRM" else "Suppliers / HRM","Contacts, balances and business activity",q,{q=it},msg,{refresh++},if(p.can(module,"CREATE")){{creating=true}}else null,kpis={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){DseHeroKpi(if(type=="CUSTOMER")"Customers" else "Suppliers",rows.size.toString(),"${rows.count{it.active}} active master record(s)",if(type=="CUSTOMER")Icons.Rounded.Groups else Icons.Rounded.LocalShipping);Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){DseMetricTile("Active",rows.count{it.active}.toString(),Icons.Rounded.CheckCircle,Modifier.weight(1f),DseSuccess);DseMetricTile("GSTIN",rows.count{!it.gstin.isNullOrBlank()}.toString(),Icons.Rounded.Badge,Modifier.weight(1f),DseInfo)};Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){DseMetricTile("Opening",money(rows.sumOf{it.openingBalance}),Icons.Rounded.AccountBalanceWallet,Modifier.weight(1f),DsePurple);DseMetricTile("Matched",shown.size.toString(),Icons.Rounded.Search,Modifier.weight(1f),DseWarning)}}}){
+    DseRegisterShell(if(type=="CUSTOMER")"Customers / CRM" else "Suppliers / HRM","Contacts, balances and business activity",q,{q=it},msg,{refresh++},if(p.can(module,"CREATE")){{creating=true}}else null,kpis={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){DseHeroKpi(if(type=="CUSTOMER")"Customers" else "Suppliers",rows.size.toString(),"${rows.count{it.active}} active master record(s)",if(type=="CUSTOMER")Icons.Rounded.Groups else Icons.Rounded.LocalShipping);Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){DseMetricTile("Active",rows.count{it.active}.toString(),Icons.Rounded.CheckCircle,Modifier.weight(1f),DseSuccess);DseMetricTile("GSTIN",rows.count{!it.gstin.isNullOrBlank()}.toString(),Icons.Rounded.Badge,Modifier.weight(1f),DseInfo)};Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){DseMetricTile("Opening",money(rows.sumOf{it.openingBalance}),Icons.Rounded.AccountBalanceWallet,Modifier.weight(1f),DsePurple);DseMetricTile("Matched",shown.size.toString(),Icons.Rounded.Search,Modifier.weight(1f),DseWarning)};RegisterExportButtons(if(type=="CUSTOMER")"Customer Master" else "Supplier Master","${businessName().replace(" ","_")}_${if(type=="CUSTOMER")"Customers" else "Suppliers"}",listOf("Code","Name","Contact","Phone","Email","GSTIN","Address","Opening Balance","Status"),shown.map{r->listOf(r.partyCode,r.name,r.contactPerson.orEmpty(),r.phone.orEmpty(),r.email.orEmpty(),r.gstin.orEmpty(),r.address.orEmpty(),r.openingBalance.toString(),if(r.active)"ACTIVE" else "INACTIVE")},onMessage={msg=it})}}){
         shown.forEach{r->
             DseRecordCard(
                 "${r.partyCode} • ${r.name}",r.gstin.orEmpty(),money(r.openingBalance),
@@ -183,33 +193,85 @@ private enum class MasterMode(val label:String){CUSTOMERS("Customers"),SUPPLIERS
         }
     }
     if(creating)PartyEditor(api,type,null,{creating=false}){party->scope.launch{when(val r=api.createParty(party)){is ApiResult.Success->{msg="Created ${r.value.partyCode}";creating=false;refresh++};else->msg=r.readableMessage()}}}
-    edit?.let{old->PartyDetailDialog(old,p,module,{edit=null},{editing=it;edit=null},{deleting=it})}
+    edit?.let{old->PartyDetailDialog(old,p,module,{edit=null},{editing=it;edit=null},{deleting=it},{view360=it;edit=null})}
+    view360?.let{row->row.id?.let{id->Party360Dialog(api,p,type,id,row.name,{view360=null},onRecordTarget)}}
     editing?.let{old->PartyEditor(api,type,old,{editing=null}){party->scope.launch{when(val r=api.updateParty(party)){is ApiResult.Success->{msg="Updated ${r.value.partyCode}";editing=null;refresh++};else->msg=r.readableMessage()}}}}
     deleting?.let{old->ConfirmDialog("Delete ${old.partyCode}","Delete this ${type.lowercase()} only if it is not referenced by ERP transactions.","Delete",true,{deleting=null}){scope.launch{val id=old.id?:return@launch;when(val r=api.deleteParty(id,old.rowVersion)){is ApiResult.Success->{msg="Deleted ${old.partyCode}";deleting=null;edit=null;refresh++};else->{msg=r.readableMessage();deleting=null}}}}}
 }
 
-@Composable private fun PartyDetailDialog(row:MasterParty,p:PermissionContext,module:String,onClose:()->Unit,onEdit:(MasterParty)->Unit,onDelete:(MasterParty)->Unit){
-    DetailDialog("${row.partyCode} • ${row.name}",listOf("GSTIN" to row.gstin.orEmpty(),"Contact" to row.contactPerson.orEmpty(),"Phone" to row.phone.orEmpty(),"Email" to row.email.orEmpty(),"Address" to row.address.orEmpty(),"Opening Balance" to money(row.openingBalance),"Status" to if(row.active)"ACTIVE" else "INACTIVE"),buildList{if(p.can(module,"EDIT"))add("Edit" to {onClose();onEdit(row)});if(p.can(module,"DELETE"))add("Delete" to {onDelete(row)})},onClose)
+@Composable private fun PartyDetailDialog(row:MasterParty,p:PermissionContext,module:String,onClose:()->Unit,onEdit:(MasterParty)->Unit,onDelete:(MasterParty)->Unit,on360:(MasterParty)->Unit){
+    DetailDialog("${row.partyCode} • ${row.name}",listOf("GSTIN" to row.gstin.orEmpty(),"Contact" to row.contactPerson.orEmpty(),"Phone" to row.phone.orEmpty(),"Email" to row.email.orEmpty(),"Address" to row.address.orEmpty(),"Opening Balance" to money(row.openingBalance),"Status" to if(row.active)"ACTIVE" else "INACTIVE"),buildList{add("360° View" to {on360(row)});if(p.can(module,"EDIT"))add("Edit" to {onClose();onEdit(row)});if(p.can(module,"DELETE"))add("Delete" to {onDelete(row)})},onClose)
 }
 
-@Composable private fun PartyEditor(api:DseErpHttpClient,type:String,current:MasterParty?,onClose:()->Unit,onSave:(MasterParty)->Unit){
+@Composable internal fun PartyEditor(api:DseErpHttpClient,type:String,current:MasterParty?,onClose:()->Unit,onSave:(MasterParty)->Unit){
     var code by remember{mutableStateOf(current?.partyCode.orEmpty())};var name by remember{mutableStateOf(current?.name.orEmpty())};var contact by remember{mutableStateOf(current?.contactPerson.orEmpty())};var phone by remember{mutableStateOf(current?.phone.orEmpty())};var email by remember{mutableStateOf(current?.email.orEmpty())};var gstin by remember{mutableStateOf(current?.gstin.orEmpty())};var address by remember{mutableStateOf(current?.address.orEmpty())};var opening by remember{mutableStateOf((current?.openingBalance?:0.0).toString())};var active by remember{mutableStateOf(current?.active?:true)};var msg by remember{mutableStateOf("")}
     LaunchedEffect(current,type){if(current==null&&code.isBlank())when(val r=api.nextPartyCode(type)){is ApiResult.Success->code=r.value.code;else->msg=r.readableMessage()}}
     PremiumAlertDialog(onDismissRequest=onClose,title={Text(if(current==null)"New ${type.lowercase().replaceFirstChar{it.uppercase()}}" else "Edit ${current.partyCode}")},text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){DseField("Party Code",code,singleLine=true,readOnly=true,required=true,onValue={});DseField("Name",name,singleLine=true,required=true,onValue={name=it});DseField("Contact Person",contact,singleLine=true,onValue={contact=it});DseField("Phone",phone,singleLine=true,onValue={phone=it});DseField("Email",email,singleLine=true,onValue={email=it});DseField("GSTIN",gstin,singleLine=true,onValue={gstin=it});DseField("Address",address,onValue={address=it});DseNumberField("Opening Balance",opening,allowNegative=true,onValue={opening=it});Row(verticalAlignment=Alignment.CenterVertically){Switch(active,{active=it});PremiumOptionLabel("Active",accent=DseSuccess)};DseMessageFeedback(msg)}},confirmButton={Button(enabled=code.isNotBlank()&&name.isNotBlank(),onClick={onSave((current?:MasterParty()).copy(partyType=type,partyCode=code,name=name.trim(),contactPerson=contact.trim(),phone=phone.trim(),email=email.trim(),gstin=gstin.trim(),address=address.trim(),openingBalance=opening.toDoubleOrNull()?:0.0,active=active))}){Text("Save")}},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})
 }
 
 @Composable private fun ItemMasterScreen(api:DseErpHttpClient,p:PermissionContext,openTarget:RecordTarget?=null,onTargetConsumed:()->Unit={}){
-    var q by remember{mutableStateOf("")};var rows by remember{mutableStateOf<List<MasterItem>>(emptyList())};var msg by remember{mutableStateOf("")};var refresh by remember{mutableIntStateOf(0)};var edit by remember{mutableStateOf<MasterItem?>(null)};var editing by remember{mutableStateOf<MasterItem?>(null)};var creating by remember{mutableStateOf(false)};var deleting by remember{mutableStateOf<MasterItem?>(null)};val scope=rememberCoroutineScope()
+    var q by remember{mutableStateOf("")};var rows by remember{mutableStateOf<List<MasterItem>>(emptyList())};var msg by remember{mutableStateOf("")};var refresh by remember{mutableIntStateOf(0)};var edit by remember{mutableStateOf<MasterItem?>(null)};var editing by remember{mutableStateOf<MasterItem?>(null)};var creating by remember{mutableStateOf(false)};var deleting by remember{mutableStateOf<MasterItem?>(null)};var selectedCodes by remember{mutableStateOf<Set<String>>(emptySet())};val scope=rememberCoroutineScope()
     LaunchedEffect(api,refresh){when(val r=api.listItems()){is ApiResult.Success->{rows=r.value;msg="${rows.size} item(s)${if(r.source==ApiDataSource.CACHE)" • cached" else ""}"};else->msg=r.readableMessage()}}
     LaunchedEffect(openTarget?.moduleKey,openTarget?.reference,rows.size){val t=openTarget;if(t!=null&&t.moduleKey.uppercase() in setOf("ITEM","INVENTORY")){if(t.reference=="__CREATE__"){creating=true;onTargetConsumed()}else if(t.reference.isNotBlank()&&rows.isNotEmpty()){q=t.reference;edit=rows.firstOrNull{it.itemCode.equals(t.reference,true)||it.id?.toLong()==t.recordId};onTargetConsumed()}}}
     val shown=remember(rows,q){if(q.isBlank())rows else rows.filter{listOf(it.itemCode,it.description,it.category,it.brand,it.material,it.hsn,it.location).any{x->x.orEmpty().contains(q,true)}}}
-    DseRegisterShell("Item Master","Products, pricing, tax and stock defaults",q,{q=it},msg,{refresh++},if(p.can("INVENTORY","CREATE")){{creating=true}}else null,kpis={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){DseHeroKpi("Item Master",rows.size.toString(),"${rows.count{it.active}} active item(s)",Icons.Rounded.Inventory2);Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){DseMetricTile("Low Stock",rows.count{it.openingStock<=it.minimumStock}.toString(),Icons.Rounded.WarningAmber,Modifier.weight(1f),if(rows.any{it.openingStock<=it.minimumStock})DseWarning else DseSuccess);DseMetricTile("Matched",shown.size.toString(),Icons.Rounded.Search,Modifier.weight(1f),DseInfo)};Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){DseMetricTile("Stock Qty",rows.sumOf{it.openingStock}.toString(),Icons.Rounded.Warehouse,Modifier.weight(1f),DsePurple);DseMetricTile("Stock Value",compactMoney(rows.sumOf{it.openingStock*it.purchasePrice}),Icons.Rounded.AccountBalanceWallet,Modifier.weight(1f),DseSuccess)}}}){
+    DseRegisterShell(
+        "Item Master",
+        "Products, pricing, tax and stock defaults",
+        q,
+        { q=it },
+        msg,
+        { refresh++ },
+        if(p.can("INVENTORY","CREATE")) {{ creating=true }} else null,
+        kpis={
+            Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+                DseHeroKpi("Item Master",rows.size.toString(),"${rows.count{it.active}} active item(s)",Icons.Rounded.Inventory2)
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
+                    DseMetricTile("Low Stock",rows.count{it.openingStock<=it.minimumStock}.toString(),Icons.Rounded.WarningAmber,Modifier.weight(1f),if(rows.any{it.openingStock<=it.minimumStock})DseWarning else DseSuccess)
+                    DseMetricTile("Matched",shown.size.toString(),Icons.Rounded.Search,Modifier.weight(1f),DseInfo)
+                }
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
+                    DseMetricTile("Stock Qty",rows.sumOf{it.openingStock}.toString(),Icons.Rounded.Warehouse,Modifier.weight(1f),DsePurple)
+                    DseMetricTile("Stock Value",compactMoney(rows.sumOf{it.openingStock*it.purchasePrice}),Icons.Rounded.AccountBalanceWallet,Modifier.weight(1f),DseSuccess)
+                }
+                RegisterExportButtons(
+                    "Item Master",
+                    "${businessName().replace(" ","_")}_Items",
+                    listOf("Item Code","Description","Category","Unit","HSN","GST %","Purchase Price","Selling Price","On Hand","Reserved","Minimum","Location","Status"),
+                    shown.map{r->listOf(r.itemCode,r.description,r.category.orEmpty(),r.unit.orEmpty(),r.hsn.orEmpty(),r.gst.toString(),r.purchasePrice.toString(),r.sellingPrice.toString(),r.openingStock.toString(),r.reservedStock.toString(),r.minimumStock.toString(),r.location.orEmpty(),if(r.active)"ACTIVE" else "INACTIVE")},
+                    onMessage={msg=it},
+                )
+                if(p.can("INVENTORY","DELETE")&&selectedCodes.isNotEmpty()){
+                    PremiumSecondaryButton(
+                        "Delete Selected (${selectedCodes.size})",
+                        {
+                            scope.launch{
+                                var deleted=0
+                                val failures=mutableListOf<String>()
+                                rows.filter{it.itemCode in selectedCodes}.forEach{item->
+                                    when(val r=api.deleteItem(item.itemCode,item.rowVersion)){
+                                        is ApiResult.Success->deleted++
+                                        else->failures+=item.itemCode
+                                    }
+                                }
+                                selectedCodes=emptySet()
+                                msg="Deleted $deleted item(s)"+(if(failures.isNotEmpty())" • blocked: ${failures.joinToString()}" else "")
+                                refresh++
+                            }
+                        },
+                        Modifier.fillMaxWidth(),
+                        icon=Icons.Rounded.Delete,
+                    )
+                }
+            }
+        },
+    ){
         shown.forEach{r->DseRecordCard(
             r.itemCode,r.description,money(r.sellingPrice),listOf("Status" to if(r.active)"ACTIVE" else "INACTIVE"),
             meta="${r.category.orEmpty()} • ${r.unit.orEmpty()} • GST ${r.gst}% • Stock ${r.openingStock}",
             swipeStartActions=buildList{
                 add(SwipeAction("Open",Icons.Rounded.Visibility){edit=r})
                 if(p.can("INVENTORY","EDIT"))add(SwipeAction("Edit",Icons.Rounded.Edit){editing=r})
+                if(p.can("INVENTORY","DELETE"))add(SwipeAction(if(r.itemCode in selectedCodes)"Unselect" else "Select",if(r.itemCode in selectedCodes)Icons.Rounded.CheckBox else Icons.Rounded.CheckBoxOutlineBlank){selectedCodes=if(r.itemCode in selectedCodes)selectedCodes-r.itemCode else selectedCodes+r.itemCode})
             },
             swipeEndActions=buildList{
                 if(p.can("INVENTORY","DELETE"))add(SwipeAction("Delete",Icons.Rounded.Delete,true){deleting=r})
@@ -348,11 +410,12 @@ private enum class MasterMode(val label:String){CUSTOMERS("Customers"),SUPPLIERS
 }
 
 @Composable private fun InventoryWorkspace(api:DseErpHttpClient,p:PermissionContext,username:String,openTarget:RecordTarget?=null,onTargetConsumed:()->Unit={}){
-    var q by remember{mutableStateOf("")};var items by remember{mutableStateOf<List<MasterItem>>(emptyList())};var msg by remember{mutableStateOf("Loading inventory…")};var selected by remember{mutableStateOf<MasterItem?>(null)};var history by remember{mutableStateOf<List<StockHistoryRow>>(emptyList())};var adjust by remember{mutableStateOf(false)};var refresh by remember{mutableIntStateOf(0)};val scope=rememberCoroutineScope()
+    var q by remember{mutableStateOf("")};var items by remember{mutableStateOf<List<MasterItem>>(emptyList())};var msg by remember{mutableStateOf("Loading inventory…")};var selected by remember{mutableStateOf<MasterItem?>(null)};var history by remember{mutableStateOf<List<StockHistoryRow>>(emptyList())};var adjust by remember{mutableStateOf(false)};var refresh by remember{mutableIntStateOf(0)};var category by remember{mutableStateOf("ALL")};var stockStatus by remember{mutableStateOf("ALL")};val scope=rememberCoroutineScope()
     LaunchedEffect(refresh){when(val r=api.listItems()){is ApiResult.Success->{items=r.value;msg="${r.value.size} items"};else->msg=r.readableMessage()}}
     LaunchedEffect(openTarget?.moduleKey,openTarget?.reference,openTarget?.recordId){val t=openTarget;if(t!=null&&t.moduleKey.uppercase() in setOf("ITEM","INVENTORY")&&(t.reference.isNotBlank()||t.recordId!=null)){q=t.reference;when(val r=api.searchItems(t.reference,50)){is ApiResult.Success->{selected=r.value.firstOrNull{it.itemCode.equals(t.reference,true)||(t.recordId!=null&&it.id?.toLong()==t.recordId)};if(selected==null)msg="Inventory item ${t.reference.ifBlank{t.recordId?.toString().orEmpty()}} was not found. Refresh Item Master and try again." else selected?.let{i->history=(api.stockHistory(i.itemCode) as? ApiResult.Success)?.value.orEmpty()}};else->msg=r.readableMessage()};onTargetConsumed()}}
-    val shown=remember(items,q){items.filter{q.isBlank()||it.itemCode.contains(q,true)||it.description.contains(q,true)||it.location.orEmpty().contains(q,true)}}
-    DseRegisterShell("Inventory","Stock balance and adjustment history",q,{q=it},msg,{refresh++},kpis={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){DseHeroKpi("Stock On Hand",items.sumOf{it.openingStock}.toString(),"${items.size} inventory item(s)",Icons.Rounded.Warehouse);Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){DseMetricTile("Low Stock",items.count{it.openingStock<=it.minimumStock}.toString(),Icons.Rounded.WarningAmber,Modifier.weight(1f),if(items.any{it.openingStock<=it.minimumStock})DseWarning else DseSuccess);DseMetricTile("Reserved",items.sumOf{it.reservedStock}.toString(),Icons.Rounded.Inventory,Modifier.weight(1f),DseInfo)};Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){DseMetricTile("Available",items.sumOf{(it.openingStock-it.reservedStock).coerceAtLeast(0.0)}.toString(),Icons.Rounded.Inventory2,Modifier.weight(1f),DseSuccess);DseMetricTile("Matched",shown.size.toString(),Icons.Rounded.Search,Modifier.weight(1f),DsePurple)}}}){
+    val categories=remember(items){listOf("ALL")+items.mapNotNull{it.category?.takeIf { value -> value.isNotBlank() }}.distinct().sorted()}
+    val shown=remember(items,q,category,stockStatus){items.filter{item->(q.isBlank()||item.itemCode.contains(q,true)||item.description.contains(q,true)||item.location.orEmpty().contains(q,true))&&(category=="ALL"||item.category.equals(category,true))&&when(stockStatus){"LOW STOCK"->item.openingStock<=item.minimumStock;"AVAILABLE"->item.openingStock>item.minimumStock;"OUT OF STOCK"->item.openingStock<=0.0;else->true}}}
+    DseRegisterShell("Inventory","Stock balance and adjustment history",q,{q=it},msg,{refresh++},kpis={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){DseHeroKpi("Stock On Hand",items.sumOf{it.openingStock}.toString(),"${items.size} inventory item(s)",Icons.Rounded.Warehouse);Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){DseMetricTile("Low Stock",items.count{it.openingStock<=it.minimumStock}.toString(),Icons.Rounded.WarningAmber,Modifier.weight(1f),if(items.any{it.openingStock<=it.minimumStock})DseWarning else DseSuccess);DseMetricTile("Reserved",items.sumOf{it.reservedStock}.toString(),Icons.Rounded.Inventory,Modifier.weight(1f),DseInfo)};Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){DseMetricTile("Available",items.sumOf{(it.openingStock-it.reservedStock).coerceAtLeast(0.0)}.toString(),Icons.Rounded.Inventory2,Modifier.weight(1f),DseSuccess);DseMetricTile("Matched",shown.size.toString(),Icons.Rounded.Search,Modifier.weight(1f),DsePurple)};Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){Box(Modifier.weight(1f)){DseSelect("Category",category,categories,onValue={category=it})};Box(Modifier.weight(1f)){DseSelect("Stock Status",stockStatus,listOf("ALL","AVAILABLE","LOW STOCK","OUT OF STOCK"),onValue={stockStatus=it})}};RegisterExportButtons("Inventory","${businessName().replace(" ","_")}_Inventory",listOf("Item Code","Description","Category","On Hand","Reserved","Available","Minimum","Location","Stock Status"),shown.map{i->listOf(i.itemCode,i.description,i.category.orEmpty(),i.openingStock.toString(),i.reservedStock.toString(),(i.openingStock-i.reservedStock).coerceAtLeast(0.0).toString(),i.minimumStock.toString(),i.location.orEmpty(),if(i.openingStock<=0)"OUT OF STOCK" else if(i.openingStock<=i.minimumStock)"LOW STOCK" else "AVAILABLE")},onMessage={msg=it})}}){
         shown.forEach{i->
             fun openItem(){selected=i;scope.launch{history=(api.stockHistory(i.itemCode) as? ApiResult.Success)?.value.orEmpty()}}
             DseRecordCard(
@@ -368,7 +431,7 @@ private enum class MasterMode(val label:String){CUSTOMERS("Customers"),SUPPLIERS
 }
 @Composable private fun StockAdjustmentDialog(item:MasterItem?,onClose:()->Unit,onSave:(StockAdjustmentRequest)->Unit){var type by remember{mutableStateOf("ADD")};var qty by remember{mutableStateOf("")};var reason by remember{mutableStateOf("")};var ref by remember{mutableStateOf("")};PremiumAlertDialog(onDismissRequest=onClose,title={Text("Adjust ${item?.itemCode.orEmpty()}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){DseSelect("Adjustment Type",type,listOf("ADD","REMOVE","SET"),required=true,onValue={type=it});DseNumberField("Quantity",qty,min=0.000001,required=true,onValue={qty=it});DseField("Reason",reason,required=true,onValue={reason=it});DseField("Reference No",ref,singleLine=true,onValue={ref=it})}},confirmButton={Button(enabled=(qty.toDoubleOrNull()?:0.0)>0&&reason.isNotBlank(),onClick={onSave(StockAdjustmentRequest(itemCode=item?.itemCode.orEmpty(),type=type,quantity=qty.toDoubleOrNull()?:0.0,reason=reason,referenceNo=ref))}){Text("Apply")}},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})}
 
-@Composable private fun PurchaseReconWorkspace(api:DseErpHttpClient,p:PermissionContext,openTarget:RecordTarget?=null,onTargetConsumed:()->Unit={}){
+@Composable private fun PurchaseReconWorkspace(api:DseErpHttpClient,p:PermissionContext,onRecordTarget:(RecordTarget)->Unit,openTarget:RecordTarget?=null,onTargetConsumed:()->Unit={}){
     var page by remember{mutableIntStateOf(0)}
     var q by remember{mutableStateOf("")}
     var status by remember{mutableStateOf("")}
@@ -378,6 +441,8 @@ private enum class MasterMode(val label:String){CUSTOMERS("Customers"),SUPPLIERS
     var creating by remember{mutableStateOf(false)}
     var editing by remember{mutableStateOf<PurchaseReconRecord?>(null)}
     var manageSuppliers by remember{mutableStateOf(false)}
+    var attachmentRecord by remember{mutableStateOf<PurchaseReconRecord?>(null)}
+    var bankLinksRecord by remember{mutableStateOf<PurchaseReconRecord?>(null)}
     var refresh by remember{mutableIntStateOf(0)}
     val scope=rememberCoroutineScope()
     LaunchedEffect(openTarget?.moduleKey,openTarget?.recordId,openTarget?.reference){
@@ -389,7 +454,16 @@ private enum class MasterMode(val label:String){CUSTOMERS("Customers"),SUPPLIERS
         }
     }
     LaunchedEffect(page,q,status,refresh){when(val r=api.purchaseReconPage(page,25,q,status)){is ApiResult.Success->{data=r.value;msg="${r.value.totalRows} recon record(s)"};else->msg=r.readableMessage()}}
-    DseRegisterShell("Purchase Reconciliation","Match supplier invoices and statement activity",q,{q=it;page=0},msg,{refresh++},if(p.can("PURCHASE_RECON","CREATE")){{creating=true}}else null,footer={data?.let{PagingControls(it.page,it.totalPages,it.totalRows){page=it}}}){
+    val metrics=data?.metrics?:PurchaseReconMetrics()
+    DseRegisterShell(
+        "Purchase Reconciliation","Match supplier invoices and statement activity",q,{q=it;page=0},msg,{refresh++},
+        if(p.can("PURCHASE_RECON","CREATE")){{creating=true}}else null,
+        kpis={Column(verticalArrangement=Arrangement.spacedBy(7.dp)){
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp)){DseMetricTile("Open",metrics.open.toString(),Icons.Rounded.Schedule,Modifier.weight(1f),DseWarning);DseMetricTile("Reconciled",metrics.reconciled.toString(),Icons.Rounded.Verified,Modifier.weight(1f),DseSuccess)}
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp)){DseMetricTile("Invoice Value",compactMoney(metrics.invoiceValue),Icons.Rounded.ReceiptLong,Modifier.weight(1f),DsePurple);DseMetricTile("Outstanding",compactMoney(metrics.outstandingValue),Icons.Rounded.AccountBalanceWallet,Modifier.weight(1f),DseDanger)}
+        }},
+        footer={data?.let{PagingControls(it.page,it.totalPages,it.totalRows){page=it}}}
+    ){
         FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
             DseSelect("Status",status,listOf("","OPEN","PARTIAL","RECONCILED","NEEDS REVIEW"),onValue={status=it;page=0})
             if(p.can("RECON_SUPPLIER","VIEW"))OutlinedButton(onClick={manageSuppliers=true}){Icon(Icons.Rounded.Groups,null);Text("Recon Suppliers")}
@@ -399,15 +473,26 @@ private enum class MasterMode(val label:String){CUSTOMERS("Customers"),SUPPLIERS
     selected?.let{r->
         DetailDialog(r.reference,listOf("Supplier" to r.supplierName,"GSTIN" to r.supplierGstin,"Invoice" to r.supplierInvoiceNo,"Date" to r.invoiceDate,"Taxable" to money(r.taxableValue),"CGST" to money(r.cgst),"SGST" to money(r.sgst),"IGST" to money(r.igst),"Other Adjustment" to money(r.otherAdjustment),"Invoice Value" to money(r.invoiceValue),"Linked" to money(r.linkedAmount),"Balance" to money(r.balance),"Tax Difference" to money(r.taxDifference),"Tax Review" to if(r.taxReviewRequired)"REQUIRED" else "OK","Notes" to r.notes,"Bank Links" to r.bankLinks.joinToString("\n"){"${it.bankTransactionDate} • ${it.bankReference} • ${money(it.allocatedAmount)}"}),buildList{
             if(p.can("PURCHASE_RECON","EDIT"))add("Edit" to {editing=r;selected=null})
+            add("Attachments" to {attachmentRecord=r;selected=null})
+            if(r.bankLinks.isNotEmpty())add("Bank Links" to {bankLinksRecord=r;selected=null})
             if(p.can("PURCHASE_RECON","DELETE")&&r.linkedAmount<=0.009)add("Delete" to {scope.launch{when(val x=api.deletePurchaseRecon(r.id?:0)){is ApiResult.Success->{selected=null;refresh++;msg="Purchase Recon deleted"};else->msg=x.readableMessage()}}})
         },{selected=null})
     }
-    if(creating)PurchaseReconEditor(api,null,{creating=false}){req->scope.launch{when(val r=api.savePurchaseRecon(req)){is ApiResult.Success->{creating=false;selected=r.value;refresh++;msg="Purchase Recon ${r.value.reference} created"};else->msg=r.readableMessage()}}}
-    editing?.let{old->PurchaseReconEditor(api,old,{editing=null}){req->scope.launch{when(val r=api.updatePurchaseRecon(old.id?:0,req)){is ApiResult.Success->{editing=null;selected=r.value;refresh++;msg="Purchase Recon updated"};else->msg=r.readableMessage()}}}}
+    attachmentRecord?.let{r->PremiumAlertDialog(onDismissRequest={attachmentRecord=null},title={Text("Attachments • ${r.reference}")},text={Column(Modifier.heightIn(max=520.dp)){AttachmentManager(api,"PURCHASE_RECON",r.id?:0,p.can("PURCHASE_RECON","EDIT"),refresh){msg=it}}},confirmButton={TextButton(onClick={attachmentRecord=null;refresh++}){Text("Close")}})}
+    bankLinksRecord?.let{r->PurchaseReconBankLinksDialog(r,{bankLinksRecord=null}){target->bankLinksRecord=null;onRecordTarget(target)}}
+    if(creating)PurchaseReconEditor(api,null,p,{creating=false}){req->scope.launch{when(val r=api.savePurchaseRecon(req)){is ApiResult.Success->{creating=false;selected=r.value;refresh++;msg="Purchase Recon ${r.value.reference} created"};else->msg=r.readableMessage()}}}
+    editing?.let{old->PurchaseReconEditor(api,old,p,{editing=null}){req->scope.launch{when(val r=api.updatePurchaseRecon(old.id?:0,req)){is ApiResult.Success->{editing=null;selected=r.value;refresh++;msg="Purchase Recon updated"};else->msg=r.readableMessage()}}}}
     if(manageSuppliers)ReconSupplierManager(api,p,{manageSuppliers=false})
 }
 
-@Composable private fun PurchaseReconEditor(api:DseErpHttpClient,current:PurchaseReconRecord?,onClose:()->Unit,onSave:(PurchaseReconSave)->Unit){
+@Composable private fun PurchaseReconBankLinksDialog(record:PurchaseReconRecord,onClose:()->Unit,onOpen:(RecordTarget)->Unit){
+    PremiumAlertDialog(onDismissRequest=onClose,title={Text("Bank Links • ${record.reference}")},text={Column(Modifier.heightIn(max=520.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(7.dp)){
+        if(record.bankLinks.isEmpty())Text("No bank allocations linked.",color=MaterialTheme.colorScheme.onSurfaceVariant)
+        record.bankLinks.forEach{link->PremiumCard(Modifier.fillMaxWidth(),padding=10.dp){Text(link.bankReference.ifBlank{"Bank allocation"},fontWeight=FontWeight.Bold);Text("${link.bankTransactionDate} • ${money(link.allocatedAmount)}",style=MaterialTheme.typography.bodySmall);Row(horizontalArrangement=Arrangement.spacedBy(7.dp)){link.statementTransactionId?.let{id->OutlinedButton(onClick={onOpen(RecordTarget("BANK_STATEMENT",link.bankReference,id))}){Icon(Icons.Rounded.AccountBalance,null);Text("Statement")}};link.financeEntryId?.let{id->OutlinedButton(onClick={onOpen(RecordTarget("FINANCE",link.financeVoucherNo,id.toLong()))}){Icon(Icons.Rounded.ReceiptLong,null);Text("Bank Entry")}}}}}
+    }},confirmButton={TextButton(onClick=onClose){Text("Close")}})
+}
+
+@Composable private fun PurchaseReconEditor(api:DseErpHttpClient,current:PurchaseReconRecord?,p:PermissionContext,onClose:()->Unit,onSave:(PurchaseReconSave)->Unit){
     var suppliers by remember{mutableStateOf<List<PurchaseReconSupplier>>(emptyList())}
     var supplier by remember{mutableStateOf<PurchaseReconSupplier?>(null)}
     var invoice by remember{mutableStateOf(current?.supplierInvoiceNo.orEmpty())}
@@ -419,16 +504,21 @@ private enum class MasterMode(val label:String){CUSTOMERS("Customers"),SUPPLIERS
     var other by remember{mutableStateOf((current?.otherAdjustment?:0.0).toString())}
     var total by remember{mutableStateOf((current?.invoiceValue?:0.0).toString())}
     var notes by remember{mutableStateOf(current?.notes.orEmpty())}
+    var addSupplier by remember{mutableStateOf(false)}
     var msg by remember{mutableStateOf("")}
+    val scope=rememberCoroutineScope()
+    fun loadSuppliers(){scope.launch{when(val r=api.purchaseReconSuppliers("",100)){is ApiResult.Success->{suppliers=r.value;if(supplier==null)supplier=current?.supplierId?.let{id->r.value.firstOrNull{it.id==id}}};else->msg=r.readableMessage()}}}
     LaunchedEffect(Unit){when(val r=api.purchaseReconSuppliers("",100)){is ApiResult.Success->{suppliers=r.value;supplier=current?.supplierId?.let{id->r.value.firstOrNull{it.id==id}}};else->msg=r.readableMessage()}}
     val options=suppliers.map{"${it.reference} • ${it.legalName}"}
     PremiumAlertDialog(onDismissRequest=onClose,title={Text(if(current==null)"New Purchase Recon" else "Edit ${current.reference}")},text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){
         DseSelect("Recon Supplier",supplier?.let{"${it.reference} • ${it.legalName}"}.orEmpty(),options,required=true,onValue={v->supplier=suppliers.firstOrNull{"${it.reference} • ${it.legalName}"==v}})
+        if(p.can("RECON_SUPPLIER","CREATE"))PremiumSecondaryButton("Add Recon Supplier",{addSupplier=true},Modifier.fillMaxWidth(),icon=Icons.Rounded.PersonAdd)
         DseField("Supplier Invoice No.",invoice,singleLine=true,required=true,onValue={invoice=it});DseDateField("Invoice Date",date,required=true,onValue={date=it})
         DseNumberField("Taxable Value",taxable,min=0.0,onValue={taxable=it});DseNumberField("CGST",cgst,min=0.0,onValue={cgst=it});DseNumberField("SGST",sgst,min=0.0,onValue={sgst=it});DseNumberField("IGST",igst,min=0.0,onValue={igst=it});DseNumberField("Other Adjustment",other,min=0.0,onValue={other=it});DseNumberField("Invoice Value",total,min=0.01,required=true,onValue={total=it});DseField("Notes",notes,onValue={notes=it})
         if(current!=null&&current.linkedAmount>.009)Text("This record is linked to Bank Statement. The server will prevent material supplier/date/amount changes until the bank match is reversed.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.tertiary)
         DseMessageFeedback(msg)
     }},confirmButton={Button(enabled=supplier?.id!=null&&invoice.isNotBlank()&&(total.toDoubleOrNull()?:0.0)>0,onClick={onSave(PurchaseReconSave(id=current?.id,supplierId=supplier?.id,supplierInvoiceNo=invoice.trim(),invoiceDate=date,taxableValue=taxable.toDoubleOrNull()?:0.0,cgst=cgst.toDoubleOrNull()?:0.0,sgst=sgst.toDoubleOrNull()?:0.0,igst=igst.toDoubleOrNull()?:0.0,otherAdjustment=other.toDoubleOrNull()?:0.0,invoiceValue=total.toDoubleOrNull()?:0.0,notes=notes,rowVersion=current?.rowVersion?:0))}){Text("Save")}},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})
+    if(addSupplier)ReconSupplierEditor(null,{addSupplier=false}){req->scope.launch{when(val r=api.createPurchaseReconSupplier(req)){is ApiResult.Success->{addSupplier=false;suppliers=(suppliers+r.value).distinctBy{it.id};supplier=r.value;msg="Recon Supplier ${r.value.reference} created"};else->msg=r.readableMessage()}}}
 }
 
 @Composable private fun ReconSupplierManager(api:DseErpHttpClient,p:PermissionContext,onClose:()->Unit){
@@ -454,14 +544,18 @@ private enum class MasterMode(val label:String){CUSTOMERS("Customers"),SUPPLIERS
     var msg by remember{mutableStateOf("Loading…")}
     var refresh by remember{mutableIntStateOf(0)}
     var q by remember{mutableStateOf("")}
+    var channel by remember{mutableStateOf("")}
+    var status by remember{mutableStateOf("")}
     var selected by remember{mutableStateOf<CommunicationRow?>(null)}
+    var resending by remember{mutableStateOf<CommunicationRow?>(null)}
+    val scope=rememberCoroutineScope()
     LaunchedEffect(refresh){
         when(val r=api.communications()){
             is ApiResult.Success->{rows=r.value;msg="${rows.size} communication record(s)"}
             else->msg=r.readableMessage()
         }
     }
-    val shown=rows.filter{q.isBlank()||listOf(it.documentLabel,it.entityType,it.channel,it.recipient,it.subject,it.status).any{x->x.contains(q,true)}}
+    val shown=rows.filter{(q.isBlank()||listOf(it.documentLabel,it.entityType,it.channel,it.recipient,it.subject,it.status,it.createdBy).any{x->x.contains(q,true)})&&(channel.isBlank()||it.channel.equals(channel,true))&&(status.isBlank()||it.status.equals(status,true))}
     DseRegisterShell(
         title="Communication Center",
         subtitle="Email, WhatsApp and document communication history",
@@ -469,59 +563,75 @@ private enum class MasterMode(val label:String){CUSTOMERS("Customers"),SUPPLIERS
         onQuery={q=it},
         message=msg,
         onRefresh={refresh++},
+        kpis={Column(verticalArrangement=Arrangement.spacedBy(7.dp)){
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp)){DseMetricTile("Total",rows.size.toString(),Icons.Rounded.Forum,Modifier.weight(1f),DseInfo);DseMetricTile("Successful",rows.count{!it.status.equals("FAILED",true)}.toString(),Icons.Rounded.CheckCircle,Modifier.weight(1f),DseSuccess)}
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp)){DseMetricTile("Failed",rows.count{it.status.equals("FAILED",true)}.toString(),Icons.Rounded.ErrorOutline,Modifier.weight(1f),DseDanger);DseMetricTile("Email / WhatsApp","${rows.count{it.channel.equals("EMAIL",true)}} / ${rows.count{it.channel.equals("WHATSAPP",true)}}",Icons.Rounded.AlternateEmail,Modifier.weight(1f),DsePurple)}
+        }},
     ){
+        FlowRow(horizontalArrangement=Arrangement.spacedBy(7.dp),verticalArrangement=Arrangement.spacedBy(7.dp)){DseSelect("Channel",channel,listOf("","EMAIL","WHATSAPP"),onValue={channel=it});DseSelect("Status",status,listOf("","SENT","FAILED","DELIVERED"),onValue={status=it})}
         shown.forEach{r->
             DseRecordCard(
                 title=r.documentLabel.ifBlank{"${r.entityType} #${r.entityId}"},
                 subtitle="${r.channel} • ${r.recipient}",
                 amount="",
                 statuses=listOf("Status" to r.status),
-                meta=listOf(r.subject,r.errorMessage).filter{it.isNotBlank()}.joinToString(" • "),
+                meta=listOf(r.subject,"By ${r.createdBy}",r.createdAt,r.errorMessage).filter{it.isNotBlank()}.joinToString(" • "),
+                onActions=if(r.channel.equals("EMAIL",true)&&p.can("COMMUNICATION","RESEND")){{resending=r}}else null,
             ){selected=r}
         }
+        if(shown.isEmpty())DseEmptyRegisterState("No communications","No communication records match the current filters.",Icons.Rounded.Email)
     }
     selected?.let{r->
         DetailDialog(
             r.documentLabel.ifBlank{"Communication"},
-            listOf("Channel" to r.channel,"Recipient" to r.recipient,"Subject" to r.subject,"Status" to r.status,"Message" to r.errorMessage),
-            emptyList(),
+            listOf("Entity" to r.entityType,"Channel" to r.channel,"Recipient" to r.recipient,"Subject" to r.subject,"Status" to r.status,"Created By" to r.createdBy,"Created At" to r.createdAt,"Message" to r.errorMessage),
+            buildList{if(r.channel.equals("EMAIL",true)&&p.can("COMMUNICATION","RESEND"))add("Re-send" to {resending=r;selected=null})},
         ){selected=null}
     }
+    resending?.let{r->CommunicationResendDialog(api,r,{resending=null}){message->msg=message;resending=null;refresh++}}
+}
+
+@Composable private fun CommunicationResendDialog(api:DseErpHttpClient,row:CommunicationRow,onClose:()->Unit,onDone:(String)->Unit){
+    var recipient by remember{mutableStateOf(row.recipient)};var subject by remember{mutableStateOf(row.subject.ifBlank{row.documentLabel})};var body by remember{mutableStateOf("Please find the original document attached.\n\nResent from ${businessName()} Communication Center.")};var msg by remember{mutableStateOf("")};var busy by remember{mutableStateOf(false)};val scope=rememberCoroutineScope()
+    PremiumAlertDialog(onDismissRequest=onClose,title={Text("Re-send ${row.documentLabel}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){DseField("Recipient",recipient,required=true,singleLine=true,onValue={recipient=it});DseField("Subject",subject,required=true,onValue={subject=it});DseField("Message",body,required=true,onValue={body=it});DseMessageFeedback(msg)}},confirmButton={PremiumPrimaryButton(if(busy)"Preparing…" else "Re-send",{scope.launch{busy=true;val canonicalType=when(row.entityType.uppercase()){"SALE"->"SALE_INVOICE";"PURCHASE"->"PURCHASE_INVOICE";"QUOTATION"->"QUOTATION";else->""};var attachmentName:String?=null;var attachment:String?=null;if(canonicalType.isNotBlank()&&row.documentLabel.isNotBlank()){when(val pdf=api.canonicalDocument(canonicalType,row.documentLabel,"PDF")){is ApiResult.Success->{attachmentName="${row.documentLabel}.pdf";attachment=encodeBase64Portable(pdf.value)};else->msg="Original PDF unavailable: ${pdf.readableMessage()}"}};when(val r=api.resendBusinessEmail(BusinessEmailRequest(recipient,subject,body,attachmentName,attachment))){is ApiResult.Success->onDone(r.value.message.ifBlank{"Communication re-sent"});else->msg=r.readableMessage()};busy=false}},enabled=!busy&&recipient.isNotBlank()&&subject.isNotBlank(),leadingIcon=Icons.Rounded.Send)},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})
 }
 
 @Composable private fun ReminderWorkspace(api:DseErpHttpClient,p:PermissionContext,username:String,openTarget:RecordTarget?=null,onTargetConsumed:()->Unit={}){
     var rows by remember{mutableStateOf<List<ReminderRecord>>(emptyList())}
     var msg by remember{mutableStateOf("Loading…")}
     var refresh by remember{mutableIntStateOf(0)}
+    var q by remember{mutableStateOf("")}
+    var status by remember{mutableStateOf("")}
+    var priority by remember{mutableStateOf("")}
+    var dueFilter by remember{mutableStateOf("ALL")}
     var edit by remember{mutableStateOf<ReminderRecord?>(null)}
     var creating by remember{mutableStateOf(false)}
-    var q by remember{mutableStateOf("")}
     val scope=rememberCoroutineScope()
     LaunchedEffect(refresh){when(val r=api.reminders()){is ApiResult.Success->{rows=r.value;msg="${rows.size} reminder(s)"};else->msg=r.readableMessage()}}
-    LaunchedEffect(openTarget?.moduleKey,openTarget?.recordId,openTarget?.reference){val t=openTarget;if(t!=null&&t.moduleKey.uppercase()=="REMINDER"){edit=rows.firstOrNull{it.id==t.recordId||it.referenceNo.equals(t.reference,true)};if(edit==null&&t.reference.isNotBlank())msg="Reminder ${t.reference} was not found in the current list";onTargetConsumed()}}
-    val shown=rows.filter{q.isBlank()||listOf(it.title,it.referenceNo,it.notes,it.status,it.priority).any{x->x.contains(q,true)}}
+    LaunchedEffect(openTarget?.moduleKey,openTarget?.recordId,openTarget?.reference,rows.size){val t=openTarget;if(t!=null&&t.moduleKey.uppercase()=="REMINDER"&&rows.isNotEmpty()){edit=rows.firstOrNull{it.id==t.recordId||it.referenceNo.equals(t.reference,true)};if(edit==null&&t.reference.isNotBlank())msg="Reminder ${t.reference} was not found in the current list";onTargetConsumed()}}
+    val today=todayIso();val next7=addDaysIso(today,7)
+    fun open(r:ReminderRecord)=!r.status.equals("COMPLETED",true)
+    fun overdue(r:ReminderRecord)=open(r)&&r.dueDate.isNotBlank()&&r.dueDate<today
+    fun dueToday(r:ReminderRecord)=open(r)&&r.dueDate==today
+    fun nextSeven(r:ReminderRecord)=open(r)&&r.dueDate>=today&&r.dueDate<=next7
+    val shown=rows.filter{r->(q.isBlank()||listOf(r.title,r.referenceNo,r.notes).any{it.contains(q,true)})&&(status.isBlank()||r.status.equals(status,true))&&(priority.isBlank()||r.priority.equals(priority,true))&&when(dueFilter){"OVERDUE"->overdue(r);"TODAY"->dueToday(r);"NEXT 7 DAYS"->nextSeven(r);else->true}}
     DseRegisterShell(
         title="Reminder Center",
         subtitle="Follow-ups, due actions and priority work",
-        query=q,
-        onQuery={q=it},
-        message=msg,
-        onRefresh={refresh++},
-        onAdd=if(p.can("REMINDERS","CREATE")){{creating=true}}else null,
+        query=q,onQuery={q=it},message=msg,onRefresh={refresh++},onAdd=if(p.can("REMINDERS","CREATE")){{creating=true}}else null,
+        kpis={Column(verticalArrangement=Arrangement.spacedBy(7.dp)){
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp)){DseMetricTile("Open",rows.count(::open).toString(),Icons.Rounded.PendingActions,Modifier.weight(1f),DseInfo);DseMetricTile("Overdue",rows.count(::overdue).toString(),Icons.Rounded.WarningAmber,Modifier.weight(1f),DseDanger)}
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp)){DseMetricTile("Due Today",rows.count(::dueToday).toString(),Icons.Rounded.Today,Modifier.weight(1f),DseWarning);DseMetricTile("Next 7 Days",rows.count(::nextSeven).toString(),Icons.Rounded.DateRange,Modifier.weight(1f),DsePurple)}
+        }}
     ){
-        shown.forEach{r->
-            DseRecordCard(
-                title=r.title,
-                subtitle=r.referenceNo.ifBlank{"Business reminder"},
-                amount=r.dueDate,
-                statuses=listOf("Status" to r.status,"Priority" to r.priority),
-                meta=r.notes,
-            ){edit=r}
-        }
+        FlowRow(horizontalArrangement=Arrangement.spacedBy(7.dp),verticalArrangement=Arrangement.spacedBy(7.dp)){DseSelect("Status",status,listOf("","OPEN","SNOOZED","COMPLETED"),onValue={status=it});DseSelect("Priority",priority,listOf("","LOW","MEDIUM","HIGH","URGENT"),onValue={priority=it});DseSelect("Due",dueFilter,listOf("ALL","OVERDUE","TODAY","NEXT 7 DAYS"),onValue={dueFilter=it})}
+        shown.forEach{r->DseRecordCard(title=r.title,subtitle=r.referenceNo.ifBlank{"Business reminder"},amount=r.dueDate,statuses=listOf("Status" to r.status,"Priority" to r.priority),meta=r.notes){edit=r}}
+        if(shown.isEmpty())DseEmptyRegisterState("No reminders","No reminders match the selected filters.",Icons.Rounded.EventAvailable)
     }
     if(creating)ReminderDialog(null,username,{creating=false}){value->scope.launch{when(val r=api.createReminder(value)){is ApiResult.Success->{creating=false;refresh++};else->msg=r.readableMessage()}}}
     edit?.let{r->ReminderActions(r,p,{edit=null},{scope.launch{when(val x=api.setReminderStatus(r.id?:0,it.first,it.second)){is ApiResult.Success->{edit=null;refresh++};else->msg=x.readableMessage()}}},{value->scope.launch{when(val x=api.updateReminder(r.id?:0,value)){is ApiResult.Success->{edit=null;refresh++};else->msg=x.readableMessage()}}},{scope.launch{when(val x=api.deleteReminder(r.id?:0)){is ApiResult.Success->{edit=null;refresh++};else->msg=x.readableMessage()}}})}
 }
+
 @Composable private fun ReminderDialog(current:ReminderRecord?,username:String,onClose:()->Unit,onSave:(ReminderRecord)->Unit){var title by remember{mutableStateOf(current?.title.orEmpty())};var ref by remember{mutableStateOf(current?.referenceNo.orEmpty())};var due by remember{mutableStateOf(current?.dueDate?.ifBlank{todayIso()}?:todayIso())};var priority by remember{mutableStateOf(current?.priority?.ifBlank{"MEDIUM"}?:"MEDIUM")};var notes by remember{mutableStateOf(current?.notes.orEmpty())};PremiumAlertDialog(onDismissRequest=onClose,title={Text(if(current==null)"New Reminder" else "Edit Reminder")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){DseField("Title",title,required=true,onValue={title=it});DseField("Reference",ref,singleLine=true,onValue={ref=it});DseDateField("Due Date",due,required=true,onValue={due=it});DseSelect("Priority",priority,listOf("LOW","MEDIUM","HIGH","URGENT"),onValue={priority=it});DseField("Notes",notes,onValue={notes=it})}},confirmButton={Button(enabled=title.isNotBlank(),onClick={onSave((current?:ReminderRecord()).copy(title=title,referenceNo=ref,dueDate=due,priority=priority,notes=notes,createdBy=current?.createdBy?.ifBlank{username}?:username))}){Text("Save")}},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})}
 @Composable private fun ReminderActions(r:ReminderRecord,p:PermissionContext,onClose:()->Unit,onStatus:(Pair<String,String?>)->Unit,onUpdate:(ReminderRecord)->Unit,onDelete:()->Unit){var editing by remember{mutableStateOf(false)};var snooze by remember{mutableStateOf(false)};if(editing){ReminderDialog(r,r.createdBy,{editing=false},onUpdate);return};if(snooze){var date by remember{mutableStateOf(addDaysIso(todayIso(),1))};PremiumAlertDialog(onDismissRequest={snooze=false},title={Text("Snooze Reminder")},text={DseDateField("Snoozed Until",date,onValue={date=it})},confirmButton={Button(onClick={onStatus("SNOOZED" to date)}){Text("Snooze")}},dismissButton={TextButton(onClick={snooze=false}){Text("Cancel")}});return};DetailDialog(r.title,listOf("Reference" to r.referenceNo,"Due" to r.dueDate,"Priority" to r.priority,"Status" to r.status,"Notes" to r.notes),buildList{if(p.can("REMINDERS","EDIT"))add("Edit" to {editing=true});if(p.can("REMINDERS","COMPLETE")){add("Complete" to {onStatus("COMPLETED" to null)});add("Reopen" to {onStatus("OPEN" to null)})};if(p.can("REMINDERS","SNOOZE"))add("Snooze" to {snooze=true});if(p.can("REMINDERS","DELETE"))add("Delete" to onDelete)},onClose)}
 
@@ -530,9 +640,14 @@ private enum class MasterMode(val label:String){CUSTOMERS("Customers"),SUPPLIERS
     var msg by remember{mutableStateOf("Loading…")}
     var refresh by remember{mutableIntStateOf(0)}
     var q by remember{mutableStateOf("")}
+    var mode by remember{mutableStateOf("ALL")}
+    var category by remember{mutableStateOf("")}
+    var selected by remember{mutableStateOf<InsightNotification?>(null)}
     val scope=rememberCoroutineScope()
     LaunchedEffect(refresh){when(val r=api.notifications(200)){is ApiResult.Success->{rows=r.value;msg="${rows.count{!it.read}} unread • ${rows.size} total"};else->msg=r.readableMessage()}}
-    val shown=rows.filter{q.isBlank()||listOf(it.title,it.message,it.referenceNo.orEmpty(),it.moduleKey.orEmpty()).any{x->x.contains(q,true)}}
+    val categories=rows.map{it.category}.filter{it.isNotBlank()}.distinct().sorted()
+    fun needsAction(r:InsightNotification)=!r.actionCode.isNullOrBlank()||r.severity.contains("HIGH",true)||r.severity.contains("ERROR",true)||r.category.contains("APPROVAL",true)
+    val shown=rows.filter{(q.isBlank()||listOf(it.title,it.message,it.referenceNo.orEmpty(),it.moduleKey.orEmpty(),it.category).any{x->x.contains(q,true)})&&(category.isBlank()||it.category.equals(category,true))&&when(mode){"UNREAD"->!it.read;"ACTION"->needsAction(it);else->true}}
     DseRegisterShell(
         title="Notification Center",
         subtitle="Business alerts, approvals and record activity",
@@ -540,20 +655,20 @@ private enum class MasterMode(val label:String){CUSTOMERS("Customers"),SUPPLIERS
         onQuery={q=it},
         message=msg,
         onRefresh={refresh++},
-        kpis={
-            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                if(p.can("COMMUNICATION","EDIT"))PremiumSecondaryButton("Mark all read",{scope.launch{api.markAllNotificationsRead();refresh++}},Modifier.weight(1f),icon=Icons.Rounded.Done)
-                if(p.can("COMMUNICATION","DELETE"))PremiumSecondaryButton("Clear",{scope.launch{api.clearNotifications();refresh++}},Modifier.weight(1f),icon=Icons.Rounded.DeleteSweep)
-            }
-        },
+        kpis={Column(verticalArrangement=Arrangement.spacedBy(7.dp)){
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp)){DseMetricTile("All",rows.size.toString(),Icons.Rounded.Notifications,Modifier.weight(1f),DseInfo);DseMetricTile("Unread",rows.count{!it.read}.toString(),Icons.Rounded.MarkEmailUnread,Modifier.weight(1f),DseWarning);DseMetricTile("Action Needed",rows.count(::needsAction).toString(),Icons.Rounded.PriorityHigh,Modifier.weight(1f),DseDanger)}
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){if(p.can("COMMUNICATION","EDIT"))PremiumSecondaryButton("Mark all read",{scope.launch{api.markAllNotificationsRead();refresh++}},Modifier.weight(1f),icon=Icons.Rounded.DoneAll);if(p.can("COMMUNICATION","DELETE"))PremiumSecondaryButton("Clear",{scope.launch{api.clearNotifications();refresh++}},Modifier.weight(1f),icon=Icons.Rounded.DeleteSweep)}
+        }},
     ){
+        FlowRow(horizontalArrangement=Arrangement.spacedBy(7.dp),verticalArrangement=Arrangement.spacedBy(7.dp)){DseSelect("View",mode,listOf("ALL","UNREAD","ACTION"),onValue={mode=it});DseSelect("Category",category,listOf("")+categories,onValue={category=it})}
         shown.forEach{r->
             DseRecordCard(
                 title=r.title,
                 subtitle=r.message,
                 amount="",
-                statuses=listOf("Status" to if(r.read)"READ" else "UNREAD"),
-                meta=r.referenceNo.orEmpty(),
+                statuses=listOf("Status" to if(r.read)"READ" else "UNREAD","Category" to r.category),
+                meta=listOf(r.referenceNo.orEmpty(),if(needsAction(r))"Action needed" else "").filter{it.isNotBlank()}.joinToString(" • "),
+                onActions={selected=r},
             ){
                 scope.launch{
                     if(!r.read)api.markNotificationRead(r.id)
@@ -564,7 +679,13 @@ private enum class MasterMode(val label:String){CUSTOMERS("Customers"),SUPPLIERS
                 }
             }
         }
+        if(shown.isEmpty())DseEmptyRegisterState("No notifications","Nothing matches the current notification filters.",Icons.Rounded.NotificationsOff)
     }
+    selected?.let{r->DetailDialog(r.title,listOf("Message" to r.message,"Category" to r.category,"Severity" to r.severity,"Reference" to r.referenceNo.orEmpty(),"Module" to r.moduleKey.orEmpty(),"Status" to if(r.read)"READ" else "UNREAD"),buildList{
+        if(p.can("COMMUNICATION","EDIT"))add((if(r.read)"Mark Unread" else "Mark Read") to {scope.launch{if(r.read)api.markNotificationUnread(r.id) else api.markNotificationRead(r.id);selected=null;refresh++}})
+        if(p.can("COMMUNICATION","DELETE"))add("Dismiss" to {scope.launch{when(val x=api.deleteNotification(r.id)){is ApiResult.Success->{selected=null;refresh++;msg="Notification dismissed"};else->msg=x.readableMessage()}}})
+        if(!r.moduleKey.isNullOrBlank()||!r.targetFxml.isNullOrBlank())add("Open Record" to {val key=(r.moduleKey?:r.targetFxml.orEmpty()).lowercase().replace('_','-');selected=null;onDeepLink("dseerp://$key/${r.referenceNo.orEmpty()}")})
+    }){selected=null}}
 }
 
 
@@ -609,14 +730,14 @@ private enum class MasterMode(val label:String){CUSTOMERS("Customers"),SUPPLIERS
             DseSection("Recent Purchases",Icons.Rounded.ShoppingCart){r.purchaseRows.take(20).forEach{x->DseRecordCard(x.number,"${x.date} • ${x.party}",money(x.amount),listOf("Status" to x.status)){}}}
             DseSection("Top Customers",Icons.Rounded.Groups){r.customerPoints.take(10).forEach{x->Row(Modifier.fillMaxWidth().padding(vertical=4.dp),horizontalArrangement=Arrangement.SpaceBetween){Text(x.label,Modifier.weight(1f));Text(money(x.value),fontWeight=FontWeight.Bold)}}}
             DseSection("Top Items",Icons.Rounded.Inventory2){r.itemPoints.take(10).forEach{x->Row(Modifier.fillMaxWidth().padding(vertical=4.dp),horizontalArrangement=Arrangement.SpaceBetween){Text(x.label,Modifier.weight(1f));Text(money(x.value),fontWeight=FontWeight.Bold)}}}
-            PremiumSecondaryButton("Share / Print Report",{platformShareText("Jasvi Industries Report",reportShareText(from,to,type,r))},Modifier.fillMaxWidth(),icon=Icons.Rounded.Share)
+            PremiumSecondaryButton("Share / Print Report",{platformShareText("${businessName()} Report",reportShareText(from,to,type,r))},Modifier.fillMaxWidth(),icon=Icons.Rounded.Share)
         }
         DseMessageFeedback(msg)
         Spacer(Modifier.height(10.dp))
     }
 }
 
-private fun reportShareText(from:String,to:String,type:String,r:ReportBundle)=buildString{appendLine("Jasvi Industries • $type");appendLine("Period: $from to $to");appendLine("Sales: ${money(r.sales)}");appendLine("Purchases: ${money(r.purchase)}");appendLine("Profit: ${money(r.profit)}");appendLine("Receivables: ${money(r.receivables)}");appendLine("Payables: ${money(r.payables)}");if(r.customerPoints.isNotEmpty()){appendLine("Top Customers:");r.customerPoints.take(10).forEach{appendLine("- ${it.label}: ${money(it.value)}")}};if(r.itemPoints.isNotEmpty()){appendLine("Top Items:");r.itemPoints.take(10).forEach{appendLine("- ${it.label}: ${money(it.value)}")}}}
+private fun reportShareText(from:String,to:String,type:String,r:ReportBundle)=buildString{appendLine("${businessName()} • $type");appendLine("Period: $from to $to");appendLine("Sales: ${money(r.sales)}");appendLine("Purchases: ${money(r.purchase)}");appendLine("Profit: ${money(r.profit)}");appendLine("Receivables: ${money(r.receivables)}");appendLine("Payables: ${money(r.payables)}");if(r.customerPoints.isNotEmpty()){appendLine("Top Customers:");r.customerPoints.take(10).forEach{appendLine("- ${it.label}: ${money(it.value)}")}};if(r.itemPoints.isNotEmpty()){appendLine("Top Items:");r.itemPoints.take(10).forEach{appendLine("- ${it.label}: ${money(it.value)}")}}}
 
 
 @Composable private fun ProfileWorkspace(api:DseErpHttpClient,p:PermissionContext){
@@ -634,14 +755,14 @@ private fun reportShareText(from:String,to:String,type:String,r:ReportBundle)=bu
             PremiumCard(Modifier.fillMaxWidth(),padding=16.dp){
                 Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
                     Box(Modifier.size(58.dp).background(DseBrandGradient,androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),contentAlignment=Alignment.Center){Text(u.fullName.orEmpty().ifBlank{u.username}.take(2).uppercase(),color=androidx.compose.ui.graphics.Color.White,fontWeight=FontWeight.ExtraBold,style=MaterialTheme.typography.titleLarge)}
-                    Column(Modifier.weight(1f)){Text(u.fullName.orEmpty().ifBlank{u.username},style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.ExtraBold);Text("${u.role} • ${u.department.orEmpty().ifBlank{"Jasvi Industries"}}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+                    Column(Modifier.weight(1f)){Text(u.fullName.orEmpty().ifBlank{u.username},style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.ExtraBold);Text("${u.role} • ${u.department.orEmpty().ifBlank{businessName()}}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
                     DseStatus("",if(u.mfaEnabled)"MFA ON" else "MFA OFF")
                 }
                 Text("Profile & Security",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.ExtraBold)
                 Text("Identity, access and device security in one place.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
             DseSection("Account",Icons.Rounded.AccountCircle){
-                detailRows(listOf("Username" to u.username,"Full Name" to u.fullName.orEmpty(),"Email" to u.email.orEmpty(),"Role" to u.role,"Department" to u.department.orEmpty(),"Branch" to u.branch.orEmpty(),"Access Level" to u.accessLevel.orEmpty(),"MFA" to if(u.mfaEnabled)"ENABLED" else "DISABLED"))
+                detailRows(listOf("Username" to u.username,"Full Name" to u.fullName.orEmpty(),"Email" to u.email.orEmpty(),"Role" to u.role,"Department" to u.department.orEmpty(),"Branch" to u.branch.orEmpty(),"Access Level" to u.accessLevel.orEmpty(),"MFA" to if(u.mfaEnabled)"ENABLED" else "DISABLED","Last Login" to u.lastLogin.orEmpty().ifBlank{"Never"}))
             }
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
                 PremiumPrimaryButton("Edit Profile",{edit=true},Modifier.weight(1f),leadingIcon=Icons.Rounded.Edit)
@@ -702,17 +823,17 @@ private fun reportShareText(from:String,to:String,type:String,r:ReportBundle)=bu
                 PremiumIconTile(Icons.Rounded.AdminPanelSettings,MaterialTheme.colorScheme.primary,size=46.dp)
                 Column(Modifier.weight(1f)){
                     Text("Access & Security",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.ExtraBold)
-                    Text("Users, roles and permissions for Jasvi Industries",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Users, roles and permissions for ${BusinessBrandingState.displayName}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 DseStatus("","SECURE")
             }
         }
         Spacer(Modifier.height(10.dp))
         Surface(Modifier.padding(horizontal=14.dp).fillMaxWidth(),shape=androidx.compose.foundation.shape.RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.surface,shadowElevation=4.dp){
-            TabRow(mode,containerColor=androidx.compose.ui.graphics.Color.Transparent,divider={}){listOf("Users","Roles","Permissions").forEachIndexed{i,t->Tab(selected=mode==i,onClick={mode=i},text={Text(t,fontWeight=if(mode==i)FontWeight.Bold else FontWeight.Medium)})}}
+            TabRow(mode,containerColor=androidx.compose.ui.graphics.Color.Transparent,divider={}){listOf("Users","Roles","Permissions","Approvals").forEachIndexed{i,t->Tab(selected=mode==i,onClick={mode=i},text={Text(t,fontWeight=if(mode==i)FontWeight.Bold else FontWeight.Medium)})}}
         }
         Spacer(Modifier.height(6.dp))
-        Box(Modifier.weight(1f)){when(mode){0->AdminUsers(api,p);1->AdminRoles(api,p);else->AdminPermissions(api,p)}}
+        Box(Modifier.weight(1f)){when(mode){0->AdminUsers(api,p);1->AdminRoles(api,p);2->AdminPermissions(api,p);else->AdminRegistrationApprovals(api,p)}}
     }
 }
 
@@ -755,7 +876,7 @@ private fun reportShareText(from:String,to:String,type:String,r:ReportBundle)=bu
             }
             if(p.isAdmin()||p.can("USERS","DELETE"))add("Delete" to {scope.launch{when(val r=api.deleteAdminUser(u.id)){is ApiResult.Success->{msg=r.value.message;selected=null;refresh++};else->msg=r.readableMessage()}}})
         }
-        DetailDialog(u.username,listOf("Name" to u.fullName.orEmpty(),"Email" to u.email.orEmpty(),"Role" to u.role,"Department" to u.department.orEmpty(),"Branch" to u.branch.orEmpty(),"Access" to u.accessLevel.orEmpty(),"MFA" to if(u.mfaEnabled)"ENABLED" else "DISABLED"),actions,{selected=null})
+        DetailDialog(u.username,listOf("Name" to u.fullName.orEmpty(),"Email" to u.email.orEmpty(),"Role" to u.role,"Department" to u.department.orEmpty(),"Branch" to u.branch.orEmpty(),"Access" to u.accessLevel.orEmpty(),"MFA" to if(u.mfaEnabled)"ENABLED" else "DISABLED","Last Login" to u.lastLogin.orEmpty().ifBlank{"Never"},"Row Version" to u.rowVersion.toString()),actions,{selected=null})
     }
     if(creating)AdminUserDialog(null,roleOptions,{creating=false}){req->scope.launch{when(val r=api.saveAdminUser(req)){is ApiResult.Success->{creating=false;msg="User ${r.value.username} created";refresh++};else->msg=r.readableMessage()}}}
     editing?.let{u->AdminUserDialog(u,roleOptions,{editing=null}){req->scope.launch{when(val r=api.updateAdminUser(u.id,req)){is ApiResult.Success->{editing=null;msg="User ${r.value.username} updated";refresh++};else->msg=r.readableMessage()}}}}
@@ -767,7 +888,7 @@ private fun reportShareText(from:String,to:String,type:String,r:ReportBundle)=bu
     val roles=(knownRoles+listOf("ADMIN","USER")).filter{it.isNotBlank()}.distinct()
     PremiumAlertDialog(onDismissRequest=onClose,title={Text(if(current==null)"Add User" else "Edit ${current.username}")},text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(9.dp)){
         DseField("Username",username,singleLine=true,readOnly=current!=null,required=true,onValue={username=it});if(current==null)DsePasswordField("Initial Password",password,required=true,onValue={password=it});DseField("Full Name",full,required=true,onValue={full=it});DseField("Email",email,singleLine=true,onValue={email=it});DseSelect("Role",role,roles,required=true,onValue={role=it});DseField("Department",dept,onValue={dept=it});DseField("Access Level",access,onValue={access=it});DseField("Branch",branch,onValue={branch=it});Row(verticalAlignment=Alignment.CenterVertically){Switch(active,{active=it});PremiumOptionLabel("Active",accent=DseSuccess)};Row(verticalAlignment=Alignment.CenterVertically){Switch(locked,{locked=it});PremiumOptionLabel("Locked",accent=DseDanger)};Row(verticalAlignment=Alignment.CenterVertically){Switch(mfa,{mfa=it});PremiumOptionLabel("MFA enabled",accent=DseInfo)}
-    }},confirmButton={PremiumPrimaryButton("Save User",{onSave(AdminUserSaveRequest(current?.id,username,password,full,email,role,dept,access,branch,active,locked,mfa))},enabled=username.isNotBlank()&&full.isNotBlank()&&role.isNotBlank()&&(current!=null||password.length>=8),leadingIcon=Icons.Rounded.Save)},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})
+    }},confirmButton={PremiumPrimaryButton("Save User",{onSave(AdminUserSaveRequest(current?.id,username,password,full,email,role,dept,access,branch,active,locked,mfa,current?.rowVersion?:0))},enabled=username.isNotBlank()&&full.isNotBlank()&&role.isNotBlank()&&(current!=null||password.length>=8),leadingIcon=Icons.Rounded.Save)},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})
 }
 
 @Composable private fun AdminResetPasswordDialog(user:AdminUser,onClose:()->Unit,onSave:(String)->Unit){
@@ -804,29 +925,50 @@ private fun reportShareText(from:String,to:String,type:String,r:ReportBundle)=bu
 }
 
 @Composable private fun AdminPermissions(api:DseErpHttpClient,p:PermissionContext){
-    var roles by remember{mutableStateOf<List<AdminRole>>(emptyList())};var role by remember{mutableStateOf("")};var rows by remember{mutableStateOf<List<AdminPermission>>(emptyList())};var msg by remember{mutableStateOf("")};var refresh by remember{mutableIntStateOf(0)}
-    val scope=rememberCoroutineScope();val canSave=p.isAdmin()||p.can("USERS","MANAGE_PERMISSIONS")
+    var roles by remember{mutableStateOf<List<AdminRole>>(emptyList())};var role by remember{mutableStateOf("")};var rows by remember{mutableStateOf<List<AdminPermission>>(emptyList())};var baseline by remember{mutableStateOf<List<AdminPermission>>(emptyList())};var rowVersion by remember{mutableLongStateOf(0)};var msg by remember{mutableStateOf("")};var refresh by remember{mutableIntStateOf(0)}
+    var q by remember{mutableStateOf("")};var grantedOnly by remember{mutableStateOf(false)};var template by remember{mutableStateOf("")};var copyRole by remember{mutableStateOf("")};var preview by remember{mutableStateOf(false)}
+    val scope=rememberCoroutineScope();val canSave=(p.isAdmin()||p.can("USERS","MANAGE_PERMISSIONS"))&&!role.equals("ADMIN",true)
     LaunchedEffect(Unit){(api.adminRoles() as? ApiResult.Success)?.value?.let{roles=it;role=it.firstOrNull()?.code.orEmpty()}}
-    LaunchedEffect(role,refresh){if(role.isNotBlank())when(val r=api.adminPermissions(role)){is ApiResult.Success->{rows=r.value;msg="${rows.count{it.allowed}} of ${rows.size} permissions enabled"};else->msg=r.readableMessage()}}
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(14.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
-        PremiumCard(Modifier.fillMaxWidth(),padding=14.dp){
-            Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){PremiumIconTile(Icons.Rounded.Security,MaterialTheme.colorScheme.primary,size=44.dp);Column(Modifier.weight(1f)){Text("Role Permissions",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.ExtraBold);Text("Fine-grained module and action access",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
+    LaunchedEffect(role,refresh){if(role.isNotBlank())when(val r=api.adminPermissionSet(role)){is ApiResult.Success->{rows=r.value.permissions;baseline=r.value.permissions;rowVersion=r.value.rowVersion;copyRole=roles.firstOrNull{!it.code.equals(role,true)&&!it.code.equals("ADMIN",true)}?.code.orEmpty();msg="${rows.count{it.allowed}} of ${rows.size} permissions enabled"};else->msg=r.readableMessage()}}
+    val shown=rows.filter{(!grantedOnly||it.allowed)&&(q.isBlank()||it.module.contains(q,true)||it.action.contains(q,true)||it.description.contains(q,true))}
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
+        PremiumCard(Modifier.fillMaxWidth(),padding=12.dp){
+            Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(9.dp)){PremiumIconTile(Icons.Rounded.Security,MaterialTheme.colorScheme.primary,size=40.dp);Column(Modifier.weight(1f)){Text("Role Permissions",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.ExtraBold);Text("Server-owned 10.0.16 permission matrix",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
             DseSelect("Role",role,roles.map{it.code},required=true,onValue={role=it})
+            DseField("Search module / action",q,singleLine=true,onValue={q=it})
+            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Checkbox(grantedOnly,{grantedOnly=it});Text("Show granted only",Modifier.weight(1f));Text("${rows.count{it.allowed}}/${rows.size}",fontWeight=FontWeight.Bold)}
             DseMessageFeedback(msg)
         }
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){
-            rows.forEachIndexed{i,r->
-                PremiumCard(Modifier.fillMaxWidth(),padding=11.dp){
-                    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                        Checkbox(r.allowed,{checked->if(canSave)rows=rows.toMutableList().also{it[i]=r.copy(allowed=checked)}},enabled=canSave)
-                        Column(Modifier.weight(1f)){Text("${r.module}.${r.action}",fontWeight=FontWeight.Bold);Text(r.description,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
-                        Icon(if(r.allowed)Icons.Rounded.VerifiedUser else Icons.Rounded.Shield, null, tint=if(r.allowed)DseSuccess else MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
+        if(canSave)PremiumCard(Modifier.fillMaxWidth(),padding=10.dp){
+            val templates=listOf("","Read Only","Sales Standard","Manager Standard","Business Full Access")
+            DseSelect("Permission Template",template,templates,onValue={template=it})
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp)){PremiumSecondaryButton("Apply Template",{if(template.isNotBlank()){rows=rows.map{it.copy(allowed=mobileTemplateAllows(template,it.module,it.action))};msg="$template applied as unsaved changes"}},Modifier.weight(1f),enabled=template.isNotBlank(),icon=Icons.Rounded.AutoFixHigh);PremiumSecondaryButton("Reset",{rows=baseline;msg="Unsaved changes reset"},Modifier.weight(1f),icon=Icons.Rounded.RestartAlt)}
+            DseSelect("Copy From Role",copyRole,roles.filter{!it.code.equals(role,true)&&!it.code.equals("ADMIN",true)}.map{it.code},onValue={copyRole=it})
+            PremiumSecondaryButton("Copy Role Permissions",{scope.launch{when(val r=api.adminPermissions(copyRole)){is ApiResult.Success->{val src=r.value.associateBy{it.module.uppercase()+"."+it.action.uppercase()};rows=rows.map{it.copy(allowed=src[it.module.uppercase()+"."+it.action.uppercase()]?.allowed?:false)};msg="$copyRole copied as unsaved changes"};else->msg=r.readableMessage()}}},Modifier.fillMaxWidth(),enabled=copyRole.isNotBlank(),icon=Icons.Rounded.ContentCopy)
         }
-        if(canSave)PremiumPrimaryButton("Save Permissions",{scope.launch{when(val r=api.saveAdminPermissions(AdminPermissionSaveRequest(role,rows.map{AdminPermissionSave(it.id,it.allowed)}))){is ApiResult.Success->{msg="Permissions saved";refresh++};else->msg=r.readableMessage()}}},Modifier.fillMaxWidth(),enabled=role.isNotBlank(),leadingIcon=Icons.Rounded.Save)
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp)){PremiumSecondaryButton("Effective Access",{preview=true},Modifier.weight(1f),icon=Icons.Rounded.Visibility);if(canSave)PremiumPrimaryButton("Save Permissions",{scope.launch{when(val r=api.saveAdminPermissions(AdminPermissionSaveRequest(role,rows.map{AdminPermissionSave(it.id,it.allowed)},rowVersion))){is ApiResult.Success->{msg="Permissions saved";refresh++};else->msg=r.readableMessage()}}},Modifier.weight(1f),enabled=role.isNotBlank(),leadingIcon=Icons.Rounded.Save)}
+        }
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(6.dp)){
+            shown.groupBy{it.module}.forEach{(module,permissions)->PremiumCard(Modifier.fillMaxWidth(),padding=9.dp){Text(module.replace('_',' ').lowercase().replaceFirstChar{it.uppercase()},fontWeight=FontWeight.ExtraBold);permissions.forEach{r->val index=rows.indexOfFirst{it.id==r.id};Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Checkbox(r.allowed,{checked->if(canSave&&index>=0)rows=rows.toMutableList().also{it[index]=r.copy(allowed=checked)}},enabled=canSave);Column(Modifier.weight(1f)){Text(r.action.replace('_',' ').lowercase().replaceFirstChar{it.uppercase()},fontWeight=FontWeight.SemiBold);if(r.description.isNotBlank())Text(r.description,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}}}
+        }
     }
+    if(preview)PermissionPreviewDialog(role,rows){preview=false}
+}
+
+private fun mobileTemplateAllows(template:String,module:String,action:String):Boolean{
+    val m=module.trim().uppercase();val a=action.trim().uppercase();val administration=setOf("USERS","SETTINGS","BACKUP","APPLICATION_UPDATES","SAFE_ROLLBACK");val sales=setOf("DASHBOARD","SALES","QUOTATION","CUSTOMERS","COMMUNICATION","REMINDERS","REPORTS","INVENTORY")
+    return when(template){
+        "Read Only"->m !in administration&&a=="VIEW"
+        "Sales Standard"->when{m !in sales->false;m in setOf("DASHBOARD","REPORTS","INVENTORY")->a in setOf("VIEW","EXPORT");m=="REMINDERS"->a in setOf("VIEW","CREATE","EDIT","COMPLETE","SNOOZE");m=="COMMUNICATION"->a in setOf("VIEW","CREATE","EDIT","RESEND");else->a in setOf("VIEW","CREATE","EDIT","EXPORT")}
+        "Manager Standard"->when{m in administration->false;m=="DOCUMENT_STUDIO"->a in setOf("VIEW","CREATE","EDIT","EXPORT_PDF","MANAGE_TEMPLATES");m=="BANK_EXPENSE"->a in setOf("VIEW","CREATE","EDIT","EXPORT","RECONCILE","APPROVE");else->a!="DELETE"||m in setOf("SALES","PURCHASE","QUOTATION","CUSTOMERS","SUPPLIERS","INVENTORY","MASTERS")}
+        "Business Full Access"->m !in administration
+        else->false
+    }
+}
+
+@Composable private fun PermissionPreviewDialog(role:String,rows:List<AdminPermission>,onClose:()->Unit){
+    val granted=rows.filter{it.allowed};val grouped=granted.groupBy{it.module}
+    PremiumAlertDialog(onDismissRequest=onClose,title={Text("Effective Access Preview • $role")},text={Column(Modifier.heightIn(max=600.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(7.dp)){Text("${granted.size} of ${rows.size} permissions granted across ${grouped.size} module(s).",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);if(grouped.isEmpty())Text("No permissions are currently granted.");grouped.forEach{(module,perms)->PremiumCard(Modifier.fillMaxWidth(),padding=9.dp){Text(module.replace('_',' ').lowercase().replaceFirstChar{it.uppercase()},fontWeight=FontWeight.Bold);Text(perms.joinToString(", "){it.action.replace('_',' ').lowercase().replaceFirstChar{c->c.uppercase()}},style=MaterialTheme.typography.bodySmall)}}}},confirmButton={TextButton(onClick=onClose){Text("Close")}})
 }
 
 
@@ -835,12 +977,12 @@ private fun reportShareText(from:String,to:String,type:String,r:ReportBundle)=bu
         Box(Modifier.fillMaxWidth().background(DseHeroGradient,androidx.compose.foundation.shape.RoundedCornerShape(28.dp))){
             Row(Modifier.padding(18.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(13.dp)){
                 DseBrandMark(compact=false,dark=true)
-                Column(Modifier.weight(1f)){Text("Jasvi Industries",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.ExtraBold,color=androidx.compose.ui.graphics.Color.White);Text("Enterprise Mobile • Business. Anywhere.",style=MaterialTheme.typography.bodyMedium,color=androidx.compose.ui.graphics.Color.White.copy(.80f))}
+                Column(Modifier.weight(1f)){Text(BusinessBrandingState.displayName,style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.ExtraBold,color=androidx.compose.ui.graphics.Color.White);Text("Enterprise Mobile • Business. Anywhere.",style=MaterialTheme.typography.bodyMedium,color=androidx.compose.ui.graphics.Color.White.copy(.80f))}
             }
         }
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){DseMetricTile("Mobile",MobileBuildInfo.MOBILE_VERSION,Icons.Rounded.PhoneAndroid,Modifier.weight(1f),DseViolet);DseMetricTile("Server",MobileBuildInfo.SERVER_BASELINE,Icons.Rounded.CloudDone,Modifier.weight(1f),DseSuccess)}
-        DseSection("Compatibility",Icons.Rounded.Verified){Text("API contract ${MobileBuildInfo.API_CONTRACT_VERSION}");Text("Business authority remains on the Jasvi Industries server. Mobile lifecycle, numbering, validation, permissions and resulting ERP state stay server-owned.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+        DseSection("Compatibility",Icons.Rounded.Verified){Text("API contract ${MobileBuildInfo.API_CONTRACT_VERSION}");Text("Business authority remains on the ${businessName()} server. Mobile lifecycle, numbering, validation, permissions and resulting ERP state stay server-owned.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
         DseSection(platformDeviceClassLabel(),if(platformName()=="Android") Icons.Rounded.PhoneAndroid else Icons.Rounded.PhoneAndroid){Text(platformSecurityLabel());Text(platformImportCapability());Text(platformPushCapability());Text(platformSystemExperienceCapability())}
-        DseSection("Secure architecture",Icons.Rounded.Security){Text("Server backup/restore, safe rollback, updater and template-studio authoring remain protected desktop/server administration operations.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Text("Mobile consumes approved ERP data and documents without duplicating destructive server-maintenance tools.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+        DseSection("Secure architecture",Icons.Rounded.Security){Text("Server backup/restore, safe rollback and template-studio authoring remain excluded protected desktop/server administration operations. Android update status and secure mobile update delivery remain available in the app.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Text("Mobile consumes approved ERP data and documents without duplicating destructive server-maintenance tools.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
     }
 }

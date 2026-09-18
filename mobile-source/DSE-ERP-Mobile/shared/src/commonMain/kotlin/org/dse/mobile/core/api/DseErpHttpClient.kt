@@ -72,7 +72,7 @@ class DseErpHttpClient(
     ){
         parameter("page",page);parameter("size",size);parameter("q",filter.q);parameter("invoice",filter.invoice);parameter("customer",filter.customer)
         parameter("from",filter.from);parameter("to",filter.to);parameter("paymentStatus",filter.paymentStatus);parameter("due",filter.due)
-        parameter("mail",filter.mail);parameter("whatsapp",filter.whatsapp);parameter("invoiceType",filter.invoiceType);parameter("documentStatus",filter.documentStatus)
+        parameter("mail",filter.mail);parameter("whatsapp",filter.whatsapp);parameter("invoiceType",filter.invoiceType);parameter("documentStatus",filter.documentStatus);parameter("returnStatus",filter.returnStatus)
         filter.minAmount?.let{parameter("minAmount",it)};filter.maxAmount?.let{parameter("maxAmount",it)}
     }
     override suspend fun saleByInvoice(invoiceNo:String)=cachedGet<SaleRecord>("cache.sale.${safeKey(invoiceNo)}",ExistingErpRoutes.SALE_BY_INVOICE){parameter("invoiceNo",invoiceNo)}
@@ -100,6 +100,10 @@ class DseErpHttpClient(
         return postEmpty(path)
     }
     override suspend fun sendBusinessEmail(request:BusinessEmailRequest)=post<BusinessEmailResult,BusinessEmailRequest>(ExistingErpRoutes.BUSINESS_EMAIL,request)
+    override suspend fun resendBusinessEmail(request:BusinessEmailRequest)=post<BusinessEmailResult,BusinessEmailRequest>(ExistingErpRoutes.BUSINESS_EMAIL_RESEND,request)
+    override suspend fun emailSettings()=get<EmailSettings>(ExistingErpRoutes.BUSINESS_EMAIL_SETTINGS)
+    override suspend fun saveEmailSettings(request:EmailSettings)=put<EmailSettings,EmailSettings>(ExistingErpRoutes.BUSINESS_EMAIL_SETTINGS,request)
+    override suspend fun testEmail(recipient:String)=post<BusinessEmailResult,EmailTestRequest>(ExistingErpRoutes.BUSINESS_EMAIL_TEST,EmailTestRequest(recipient))
     override suspend fun canonicalDocument(type:String,number:String,format:String)=getBytes(ExistingErpRoutes.CANONICAL_DOCUMENT){parameter("type",type);parameter("number",number);parameter("format",format)}
 
     override suspend fun purchasesPage(page:Int,size:Int,query:String)=purchasesPage(page,size,PurchaseFilter(q=query))
@@ -107,7 +111,7 @@ class DseErpHttpClient(
         OfflineRepository.cacheKey("purchases",page,size,filter.toString()),ExistingErpRoutes.PURCHASES_PAGE
     ){
         parameter("page",page);parameter("size",size);parameter("q",filter.q);parameter("supplier",filter.supplier);parameter("from",filter.from);parameter("to",filter.to)
-        parameter("paymentStatus",filter.paymentStatus);parameter("mail",filter.mail);parameter("documentStatus",filter.documentStatus)
+        parameter("paymentStatus",filter.paymentStatus);parameter("due",filter.due);parameter("mail",filter.mail);parameter("documentStatus",filter.documentStatus);parameter("returnStatus",filter.returnStatus)
     }
     override suspend fun purchaseByInvoice(invoiceNo:String)=cachedGet<PurchaseRecord>("cache.purchase.${safeKey(invoiceNo)}",ExistingErpRoutes.PURCHASE_BY_INVOICE){parameter("invoiceNo",invoiceNo)}
     override suspend fun nextPurchaseNumber()=get<NextNumber>(ExistingErpRoutes.PURCHASES_NEXT)
@@ -163,6 +167,7 @@ class DseErpHttpClient(
     override suspend fun returnsPage(type:String,page:Int,size:Int,query:String)=cachedGet<ReturnPage>(OfflineRepository.cacheKey("returns-${type.lowercase()}",page,size,query),ExistingErpRoutes.RETURNS_PAGE){parameter("type",type);parameter("page",page);parameter("size",size);parameter("q",query)}
     override suspend fun returnsPage(type:String,page:Int,size:Int,filter:ReturnFilter)=cachedGet<ReturnPage>(OfflineRepository.cacheKey("returns-${type.lowercase()}",page,size,listOf(filter.q,filter.party,filter.status,filter.from,filter.to).joinToString("|")),ExistingErpRoutes.RETURNS_PAGE){parameter("type",type);parameter("page",page);parameter("size",size);parameter("q",filter.q);parameter("party",filter.party);parameter("status",filter.status);parameter("from",filter.from);parameter("to",filter.to)}
     override suspend fun returnDetails(no:String)=cachedGet<ReturnDetails>("cache.return.${safeKey(no)}","${ExistingErpRoutes.RETURNS}/${pathSegment(no)}")
+    override suspend fun returnPartyEmail(no:String)=get<TextResponse>("${ExistingErpRoutes.SUPPORT}/returns/${pathSegment(no)}/party-email")
     override suspend fun returnedQuantities(type:String,invoiceNo:String)=get<Map<String,Double>>("${ExistingErpRoutes.RETURNS}/returned"){parameter("type",type);parameter("invoice",invoiceNo)}
     override suspend fun returnSettlements(type:String)=cachedGet<List<ReturnSettlement>>("cache.return.settlements.${type.uppercase()}","${ExistingErpRoutes.RETURNS}/settlements"){parameter("type",type)}
     override suspend fun createReturn(request:ReturnCreateRequest)=post<ReturnCreated,ReturnCreateRequest>(ExistingErpRoutes.RETURNS,request)
@@ -189,7 +194,7 @@ class DseErpHttpClient(
     override suspend fun bankCandidates(transactionId:Long)=get<List<BankCandidate>>("${ExistingErpRoutes.BANK_STATEMENTS}/transactions/$transactionId/candidates")
     override suspend fun bankSuggest(transactionId:Long)=postEmpty<List<BankCandidate>>("${ExistingErpRoutes.BANK_STATEMENTS}/transactions/$transactionId/suggest")
     override suspend fun bankMatch(transactionId:Long,user:String,allocations:List<BankAllocationRequest>,note:String):ApiResult<BankOperationResult>{
-        // Server v10.0.5 stores Match and Note through separate endpoints. Keep the financial operation atomic here; UI exposes Note as an explicit independent audit action.
+        // Server v10.0.16 stores Match and Note through separate endpoints. Keep the financial operation atomic here; UI exposes Note as an explicit independent audit action.
         return post<BankOperationResult,BankMatchRequest>("${ExistingErpRoutes.BANK_STATEMENTS}/transactions/$transactionId/match",BankMatchRequest(user,allocations))
     }
     override suspend fun bankExpense(transactionId:Long,user:String,category:String,accountName:String,paymentMode:String,notes:String)=post<BankOperationResult,BankExpenseRequest>("${ExistingErpRoutes.BANK_STATEMENTS}/transactions/$transactionId/expense",BankExpenseRequest(category,accountName,paymentMode,notes,"",user))
@@ -244,8 +249,11 @@ class DseErpHttpClient(
     override suspend fun createPurchaseReconSupplier(request:PurchaseReconSupplierSave)=post<PurchaseReconSupplier,PurchaseReconSupplierSave>("${ExistingErpRoutes.PURCHASE_RECON}/suppliers",request)
     override suspend fun updatePurchaseReconSupplier(id:Int,request:PurchaseReconSupplierSave)=put<PurchaseReconSupplier,PurchaseReconSupplierSave>("${ExistingErpRoutes.PURCHASE_RECON}/suppliers/$id",request)
     override suspend fun deletePurchaseReconSupplier(id:Int)=deleteNoBody("${ExistingErpRoutes.PURCHASE_RECON}/suppliers/$id")
+    override suspend fun purchaseReconBankLinks(id:Int)=get<List<PurchaseReconBankLink>>("${ExistingErpRoutes.PURCHASE_RECON}/records/$id/bank-links")
+    override suspend fun purchaseReconMetrics()=cachedGet<PurchaseReconMetrics>("cache.purchase.recon.metrics","${ExistingErpRoutes.PURCHASE_RECON}/metrics")
 
     override suspend fun insightDashboard(period:String)=cachedGet<InsightDashboardBundle>("cache.insights.dashboard.$period",ExistingErpRoutes.INSIGHTS_DASHBOARD){parameter("period",period)}
+    override suspend fun shellCounts()=cachedGet<ShellCounts>("cache.insights.shell-counts",ExistingErpRoutes.SHELL_COUNTS)
     override suspend fun reportFilters()=cachedGet<ReportFilters>("cache.report.filters",ExistingErpRoutes.REPORT_FILTERS)
     override suspend fun reminders()=cachedGet<List<ReminderRecord>>("cache.reminders",ExistingErpRoutes.REMINDERS)
     override suspend fun createReminder(reminder:ReminderRecord)=post<ReminderRecord,ReminderRecord>(ExistingErpRoutes.REMINDERS,reminder)
@@ -259,6 +267,8 @@ class DseErpHttpClient(
     override suspend fun markAllNotificationsRead()=postEmpty<OperationResponse>("${ExistingErpRoutes.NOTIFICATIONS}/read-all")
     override suspend fun deleteNotification(id:Long)=delete<OperationResponse>("${ExistingErpRoutes.NOTIFICATIONS}/$id")
     override suspend fun clearNotifications()=delete<OperationResponse>(ExistingErpRoutes.NOTIFICATIONS)
+    override suspend fun notificationPreferences()=cachedGet<NotificationPreferences>("cache.notification.preferences",ExistingErpRoutes.NOTIFICATION_PREFERENCES)
+    override suspend fun saveNotificationPreferences(request:NotificationPreferences)=put<NotificationPreferences,NotificationPreferences>(ExistingErpRoutes.NOTIFICATION_PREFERENCES,request)
     override suspend fun reports(from:String,to:String,reportType:String,party:String,item:String,salesperson:String)=cachedGet<ReportBundle>("cache.reports.${safeKey("$from|$to|$reportType|$party|$item|$salesperson")}",ExistingErpRoutes.REPORTS){parameter("from",from);parameter("to",to);parameter("reportType",reportType);parameter("party",party);parameter("item",item);parameter("salesperson",salesperson)}
     override suspend fun globalSearch(q:String)=get<List<GlobalSearchRow>>(ExistingErpRoutes.GLOBAL_SEARCH){parameter("q",q)}
     override suspend fun resolveRecord(moduleKey:String,reference:String)=get<ResolvedRecord>(ExistingErpRoutes.RESOLVE_RECORD){parameter("moduleKey",moduleKey);parameter("reference",reference)}
@@ -268,6 +278,44 @@ class DseErpHttpClient(
     override suspend fun communications()=cachedGet<List<CommunicationRow>>("cache.communications",ExistingErpRoutes.COMMUNICATIONS)
     override suspend fun activity(type:String,id:Int)=get<List<ActivityRow>>(ExistingErpRoutes.ACTIVITY){parameter("type",type.uppercase());parameter("id",id)}
     override suspend fun logCommunication(request:CommunicationRequest)=post<OperationResponse,CommunicationRequest>(ExistingErpRoutes.COMMUNICATIONS,request)
+
+    override suspend fun recordAudit(type:String,id:Long)=get<List<AuditEventRow>>("${ExistingErpRoutes.AUDIT}/record"){parameter("type",type.uppercase());parameter("id",id)}
+    override suspend fun globalAudit(page:Int,size:Int,filter:AuditFilter)=cachedGet<AuditGlobalPage>(OfflineRepository.cacheKey("audit",page,size,filter.toString()),"${ExistingErpRoutes.AUDIT}/global"){parameter("page",page);parameter("size",size);parameter("module",filter.module);parameter("action",filter.action);parameter("user",filter.user);parameter("reference",filter.reference);parameter("q",filter.query)}
+
+    override suspend fun customer360Summary(id:Int)=cachedGet<Customer360Summary>("cache.customer360.$id.summary","${ExistingErpRoutes.CUSTOMER_360}/$id/summary")
+    override suspend fun customer360Contacts(id:Int)=get<List<Party360ContactRow>>("${ExistingErpRoutes.CUSTOMER_360}/$id/contacts")
+    override suspend fun saveCustomer360Contact(id:Int,request:Party360ContactSave)=post<Party360ContactRow,Party360ContactSave>("${ExistingErpRoutes.CUSTOMER_360}/$id/contacts",request)
+    override suspend fun deleteCustomer360Contact(id:Int,contactId:Long,rowVersion:Long)=delete<OperationResponse>("${ExistingErpRoutes.CUSTOMER_360}/$id/contacts/$contactId"){parameter("rowVersion",rowVersion)}
+    override suspend fun customer360Quotations(id:Int)=get<List<Party360QuotationRow>>("${ExistingErpRoutes.CUSTOMER_360}/$id/quotations")
+    override suspend fun customer360Invoices(id:Int)=get<List<Party360InvoiceRow>>("${ExistingErpRoutes.CUSTOMER_360}/$id/invoices")
+    override suspend fun customer360Payments(id:Int)=get<List<Party360PaymentRow>>("${ExistingErpRoutes.CUSTOMER_360}/$id/payments")
+    override suspend fun customer360Notes(id:Int)=get<List<Party360NoteRow>>("${ExistingErpRoutes.CUSTOMER_360}/$id/notes")
+    override suspend fun saveCustomer360Note(id:Int,request:Party360NoteSave)=post<Party360NoteRow,Party360NoteSave>("${ExistingErpRoutes.CUSTOMER_360}/$id/notes",request)
+    override suspend fun deleteCustomer360Note(id:Int,noteId:Long,rowVersion:Long)=delete<OperationResponse>("${ExistingErpRoutes.CUSTOMER_360}/$id/notes/$noteId"){parameter("rowVersion",rowVersion)}
+
+    override suspend fun supplier360Summary(id:Int)=cachedGet<Supplier360Summary>("cache.supplier360.$id.summary","${ExistingErpRoutes.SUPPLIER_360}/$id/summary")
+    override suspend fun supplier360Purchases(id:Int)=get<List<Party360InvoiceRow>>("${ExistingErpRoutes.SUPPLIER_360}/$id/purchases")
+    override suspend fun supplier360Payments(id:Int)=get<List<Party360PaymentRow>>("${ExistingErpRoutes.SUPPLIER_360}/$id/payments")
+    override suspend fun supplier360Contacts(id:Int)=get<List<Party360ContactRow>>("${ExistingErpRoutes.SUPPLIER_360}/$id/contacts")
+    override suspend fun saveSupplier360Contact(id:Int,request:Party360ContactSave)=post<Party360ContactRow,Party360ContactSave>("${ExistingErpRoutes.SUPPLIER_360}/$id/contacts",request)
+    override suspend fun deleteSupplier360Contact(id:Int,contactId:Long,rowVersion:Long)=delete<OperationResponse>("${ExistingErpRoutes.SUPPLIER_360}/$id/contacts/$contactId"){parameter("rowVersion",rowVersion)}
+    override suspend fun supplier360Notes(id:Int)=get<List<Party360NoteRow>>("${ExistingErpRoutes.SUPPLIER_360}/$id/notes")
+    override suspend fun saveSupplier360Note(id:Int,request:Party360NoteSave)=post<Party360NoteRow,Party360NoteSave>("${ExistingErpRoutes.SUPPLIER_360}/$id/notes",request)
+    override suspend fun deleteSupplier360Note(id:Int,noteId:Long,rowVersion:Long)=delete<OperationResponse>("${ExistingErpRoutes.SUPPLIER_360}/$id/notes/$noteId"){parameter("rowVersion",rowVersion)}
+
+    override suspend fun setting(key:String,defaultValue:String)=get<TextResponse>("${ExistingErpRoutes.SETTINGS}/${pathSegment(key)}"){parameter("def",defaultValue)}
+    override suspend fun saveSetting(key:String,value:String)=put<OperationResponse,TextResponse>("${ExistingErpRoutes.SETTINGS}/${pathSegment(key)}",TextResponse(value))
+    override suspend fun saveSettings(values:Map<String,String>)=put<OperationResponse,SettingsBatch>(ExistingErpRoutes.SETTINGS,SettingsBatch(values))
+    override suspend fun storageStatus()=get<StorageStatus>("${ExistingErpRoutes.STORAGE}/status")
+    override suspend fun storageCleanup(dryRun:Boolean)=postEmpty<StorageCleanupResult>("${ExistingErpRoutes.STORAGE}/cleanup"){parameter("dryRun",dryRun)}
+    override suspend fun setupStatus()=get<SetupStatus>("${ExistingErpRoutes.SETUP}/status",false)
+    override suspend fun setupBootstrap(request:SetupBootstrapRequest)=post<SetupBootstrapResponse,SetupBootstrapRequest>("${ExistingErpRoutes.SETUP}/bootstrap",request,false)
+    override suspend fun latestUpdate(includePrerelease:Boolean)=get<UpdateReleaseView>("${ExistingErpRoutes.UPDATES}/releases/latest",false){parameter("includePrerelease",includePrerelease)}
+    override suspend fun updateReleases(includePrerelease:Boolean,limit:Int)=get<List<UpdateReleaseView>>("${ExistingErpRoutes.UPDATES}/releases",false){parameter("includePrerelease",includePrerelease);parameter("limit",limit.coerceIn(1,100))}
+    override suspend fun serverResources(type:String)=get<List<ServerResourceMeta>>("${ExistingErpRoutes.SERVER_RESOURCES}/${pathSegment(type.uppercase())}")
+    override suspend fun serverResourceFile(type:String,key:String)=getBytes("${ExistingErpRoutes.SERVER_RESOURCES}/${pathSegment(type.uppercase())}/${pathSegment(key)}")
+    override suspend fun putServerResource(type:String,key:String,filename:String,contentType:String,data:ByteArray,expectedChecksum:String)=putBytes<ServerResourceMeta>("${ExistingErpRoutes.SERVER_RESOURCES}/${pathSegment(type.uppercase())}/${pathSegment(key)}",data){parameter("filename",filename);parameter("contentType",contentType);if(expectedChecksum.isNotBlank())parameter("expectedChecksum",expectedChecksum)}
+    override suspend fun deleteServerResource(type:String,key:String)=deleteNoBody("${ExistingErpRoutes.SERVER_RESOURCES}/${pathSegment(type.uppercase())}/${pathSegment(key)}")
     override suspend fun documentAttachments(type:String,id:Int)=get<List<AttachmentMeta>>("${ExistingErpRoutes.SUPPORT}/documents/${type.uppercase()}/$id/attachments")
     override suspend fun addDocumentAttachment(type:String,id:Int,filename:String,data:ByteArray)=postBytes<AttachmentMeta>("${ExistingErpRoutes.SUPPORT}/documents/${type.uppercase()}/$id/attachments",data){parameter("filename",filename)}
     override suspend fun documentAttachmentFile(type:String,id:Int,attachmentId:Long)=getBytes("${ExistingErpRoutes.SUPPORT}/documents/${type.uppercase()}/$id/attachments/$attachmentId")
@@ -293,7 +341,13 @@ class DseErpHttpClient(
     override suspend fun updateAdminRole(id:Int,request:AdminRoleSaveRequest)=put<AdminRole,AdminRoleSaveRequest>("${ExistingErpRoutes.ADMIN_ROLES}/$id",request)
     override suspend fun deleteAdminRole(id:Int)=delete<OperationResponse>("${ExistingErpRoutes.ADMIN_ROLES}/$id")
     override suspend fun adminPermissions(role:String)=cachedGet<List<AdminPermission>>("cache.admin.permissions.${safeKey(role)}",ExistingErpRoutes.ADMIN_PERMISSIONS){parameter("role",role)}
+    override suspend fun adminPermissionSet(role:String)=get<AdminPermissionSet>(ExistingErpRoutes.ADMIN_PERMISSION_SET){parameter("role",role)}
     override suspend fun saveAdminPermissions(request:AdminPermissionSaveRequest)=put<OperationResponse,AdminPermissionSaveRequest>(ExistingErpRoutes.ADMIN_PERMISSIONS,request)
+    override suspend fun registrationRole()=get<RegistrationRoleDto>(ExistingErpRoutes.ADMIN_REGISTRATION_ROLE)
+    override suspend fun saveRegistrationRole(role:String)=put<RegistrationRoleDto,RegistrationRoleSaveRequest>(ExistingErpRoutes.ADMIN_REGISTRATION_ROLE,RegistrationRoleSaveRequest(role))
+    override suspend fun registrationRequests(status:String)=get<List<RegistrationRequestRow>>(ExistingErpRoutes.ADMIN_REGISTRATIONS){parameter("status",status)}
+    override suspend fun approveRegistration(id:Long,request:RegistrationDecisionRequest)=post<OperationResponse,RegistrationDecisionRequest>("${ExistingErpRoutes.ADMIN_REGISTRATIONS}/$id/approve",request)
+    override suspend fun rejectRegistration(id:Long,request:RegistrationDecisionRequest)=post<OperationResponse,RegistrationDecisionRequest>("${ExistingErpRoutes.ADMIN_REGISTRATIONS}/$id/reject",request)
 
     override suspend fun dashboard():ApiResult<DashboardSnapshot> = mapValues(insightDashboard("Today")){bundle->
         DashboardSnapshot(
@@ -307,8 +361,8 @@ class DseErpHttpClient(
             pendingReconciliation=0,
         )
     }
-    override suspend fun sync(sinceCursor:Long):ApiResult<SyncPage> = ApiResult.NotImplemented("Durable mobile change feed is not part of the v10.0.5 server contract; local outbox remains explicit.")
-    override suspend fun shipping(page:Int,size:Int):ApiResult<List<ShippingRecord>> = ApiResult.NotImplemented("Shipping remains Sale-owned data in v10.0.5; Live Activities are presentation-only.")
+    override suspend fun sync(sinceCursor:Long):ApiResult<SyncPage> = ApiResult.NotImplemented("Durable mobile change feed is not part of the v10.0.16 server contract; local outbox remains explicit.")
+    override suspend fun shipping(page:Int,size:Int):ApiResult<List<ShippingRecord>> = ApiResult.NotImplemented("Shipping remains Sale-owned data in v10.0.16; Android shipping status are presentation-only.")
 
     fun close()=client.close()
 
