@@ -35,6 +35,10 @@ interface ExistingErpApi {
     suspend fun markDocumentWhatsapp(type:String,id:Int): ApiResult<OperationResponse>
     suspend fun markDocumentEmail(type:String,id:Int): ApiResult<OperationResponse>
     suspend fun sendBusinessEmail(request:BusinessEmailRequest): ApiResult<BusinessEmailResult>
+    suspend fun resendBusinessEmail(request:BusinessEmailRequest): ApiResult<BusinessEmailResult>
+    suspend fun emailSettings(): ApiResult<EmailSettings>
+    suspend fun saveEmailSettings(request:EmailSettings): ApiResult<EmailSettings>
+    suspend fun testEmail(recipient:String): ApiResult<BusinessEmailResult>
     suspend fun canonicalDocument(type:String,number:String,format:String="PDF"): ApiResult<ByteArray>
 
     suspend fun purchasesPage(page:Int=0,size:Int=25,query:String=""): ApiResult<PurchasePage>
@@ -73,6 +77,7 @@ interface ExistingErpApi {
     suspend fun returnsPage(type:String,page:Int=0,size:Int=25,query:String=""): ApiResult<ReturnPage>
     suspend fun returnsPage(type:String,page:Int,size:Int,filter:ReturnFilter): ApiResult<ReturnPage>
     suspend fun returnDetails(no:String): ApiResult<ReturnDetails>
+    suspend fun returnPartyEmail(no:String): ApiResult<TextResponse>
     suspend fun returnedQuantities(type:String,invoiceNo:String): ApiResult<Map<String,Double>>
     suspend fun returnSettlements(type:String): ApiResult<List<ReturnSettlement>>
     suspend fun createReturn(request:ReturnCreateRequest): ApiResult<ReturnCreated>
@@ -147,8 +152,11 @@ interface ExistingErpApi {
     suspend fun createPurchaseReconSupplier(request:PurchaseReconSupplierSave): ApiResult<PurchaseReconSupplier>
     suspend fun updatePurchaseReconSupplier(id:Int,request:PurchaseReconSupplierSave): ApiResult<PurchaseReconSupplier>
     suspend fun deletePurchaseReconSupplier(id:Int): ApiResult<OperationResponse>
+    suspend fun purchaseReconBankLinks(id:Int): ApiResult<List<PurchaseReconBankLink>>
+    suspend fun purchaseReconMetrics(): ApiResult<PurchaseReconMetrics>
 
     suspend fun insightDashboard(period:String="This Month"): ApiResult<InsightDashboardBundle>
+    suspend fun shellCounts(): ApiResult<ShellCounts>
     suspend fun reportFilters(): ApiResult<ReportFilters>
     suspend fun reminders(): ApiResult<List<ReminderRecord>>
     suspend fun createReminder(reminder:ReminderRecord): ApiResult<ReminderRecord>
@@ -162,6 +170,8 @@ interface ExistingErpApi {
     suspend fun markAllNotificationsRead(): ApiResult<OperationResponse>
     suspend fun deleteNotification(id:Long): ApiResult<OperationResponse>
     suspend fun clearNotifications(): ApiResult<OperationResponse>
+    suspend fun notificationPreferences(): ApiResult<NotificationPreferences>
+    suspend fun saveNotificationPreferences(request:NotificationPreferences): ApiResult<NotificationPreferences>
     suspend fun reports(from:String,to:String,reportType:String="All Reports",party:String="",item:String="",salesperson:String=""): ApiResult<ReportBundle>
     suspend fun globalSearch(q:String): ApiResult<List<GlobalSearchRow>>
     suspend fun resolveRecord(moduleKey:String,reference:String): ApiResult<ResolvedRecord>
@@ -171,6 +181,44 @@ interface ExistingErpApi {
     suspend fun communications(): ApiResult<List<CommunicationRow>>
     suspend fun activity(type:String,id:Int): ApiResult<List<ActivityRow>>
     suspend fun logCommunication(request:CommunicationRequest): ApiResult<OperationResponse>
+
+    suspend fun recordAudit(type:String,id:Long): ApiResult<List<AuditEventRow>>
+    suspend fun globalAudit(page:Int=0,size:Int=50,filter:AuditFilter=AuditFilter()): ApiResult<AuditGlobalPage>
+
+    suspend fun customer360Summary(id:Int): ApiResult<Customer360Summary>
+    suspend fun customer360Contacts(id:Int): ApiResult<List<Party360ContactRow>>
+    suspend fun saveCustomer360Contact(id:Int,request:Party360ContactSave): ApiResult<Party360ContactRow>
+    suspend fun deleteCustomer360Contact(id:Int,contactId:Long,rowVersion:Long): ApiResult<OperationResponse>
+    suspend fun customer360Quotations(id:Int): ApiResult<List<Party360QuotationRow>>
+    suspend fun customer360Invoices(id:Int): ApiResult<List<Party360InvoiceRow>>
+    suspend fun customer360Payments(id:Int): ApiResult<List<Party360PaymentRow>>
+    suspend fun customer360Notes(id:Int): ApiResult<List<Party360NoteRow>>
+    suspend fun saveCustomer360Note(id:Int,request:Party360NoteSave): ApiResult<Party360NoteRow>
+    suspend fun deleteCustomer360Note(id:Int,noteId:Long,rowVersion:Long): ApiResult<OperationResponse>
+
+    suspend fun supplier360Summary(id:Int): ApiResult<Supplier360Summary>
+    suspend fun supplier360Purchases(id:Int): ApiResult<List<Party360InvoiceRow>>
+    suspend fun supplier360Payments(id:Int): ApiResult<List<Party360PaymentRow>>
+    suspend fun supplier360Contacts(id:Int): ApiResult<List<Party360ContactRow>>
+    suspend fun saveSupplier360Contact(id:Int,request:Party360ContactSave): ApiResult<Party360ContactRow>
+    suspend fun deleteSupplier360Contact(id:Int,contactId:Long,rowVersion:Long): ApiResult<OperationResponse>
+    suspend fun supplier360Notes(id:Int): ApiResult<List<Party360NoteRow>>
+    suspend fun saveSupplier360Note(id:Int,request:Party360NoteSave): ApiResult<Party360NoteRow>
+    suspend fun deleteSupplier360Note(id:Int,noteId:Long,rowVersion:Long): ApiResult<OperationResponse>
+
+    suspend fun setting(key:String,defaultValue:String=""): ApiResult<TextResponse>
+    suspend fun saveSetting(key:String,value:String): ApiResult<OperationResponse>
+    suspend fun saveSettings(values:Map<String,String>): ApiResult<OperationResponse>
+    suspend fun storageStatus(): ApiResult<StorageStatus>
+    suspend fun storageCleanup(dryRun:Boolean=true): ApiResult<StorageCleanupResult>
+    suspend fun setupStatus(): ApiResult<SetupStatus>
+    suspend fun setupBootstrap(request:SetupBootstrapRequest): ApiResult<SetupBootstrapResponse>
+    suspend fun latestUpdate(includePrerelease:Boolean=false): ApiResult<UpdateReleaseView>
+    suspend fun updateReleases(includePrerelease:Boolean=false,limit:Int=20): ApiResult<List<UpdateReleaseView>>
+    suspend fun serverResources(type:String): ApiResult<List<ServerResourceMeta>>
+    suspend fun serverResourceFile(type:String,key:String): ApiResult<ByteArray>
+    suspend fun putServerResource(type:String,key:String,filename:String,contentType:String,data:ByteArray,expectedChecksum:String=""): ApiResult<ServerResourceMeta>
+    suspend fun deleteServerResource(type:String,key:String): ApiResult<OperationResponse>
     suspend fun documentAttachments(type:String,id:Int): ApiResult<List<AttachmentMeta>>
     suspend fun addDocumentAttachment(type:String,id:Int,filename:String,data:ByteArray): ApiResult<AttachmentMeta>
     suspend fun documentAttachmentFile(type:String,id:Int,attachmentId:Long): ApiResult<ByteArray>
@@ -196,7 +244,13 @@ interface ExistingErpApi {
     suspend fun updateAdminRole(id:Int,request:AdminRoleSaveRequest): ApiResult<AdminRole>
     suspend fun deleteAdminRole(id:Int): ApiResult<OperationResponse>
     suspend fun adminPermissions(role:String): ApiResult<List<AdminPermission>>
+    suspend fun adminPermissionSet(role:String): ApiResult<AdminPermissionSet>
     suspend fun saveAdminPermissions(request:AdminPermissionSaveRequest): ApiResult<OperationResponse>
+    suspend fun registrationRole(): ApiResult<RegistrationRoleDto>
+    suspend fun saveRegistrationRole(role:String): ApiResult<RegistrationRoleDto>
+    suspend fun registrationRequests(status:String="PENDING_ADMIN_APPROVAL"): ApiResult<List<RegistrationRequestRow>>
+    suspend fun approveRegistration(id:Long,request:RegistrationDecisionRequest): ApiResult<OperationResponse>
+    suspend fun rejectRegistration(id:Long,request:RegistrationDecisionRequest): ApiResult<OperationResponse>
 }
 
 interface MobileApiV1 {

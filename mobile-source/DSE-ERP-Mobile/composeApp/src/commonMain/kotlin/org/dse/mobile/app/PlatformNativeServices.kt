@@ -10,6 +10,8 @@ data class BiometricAuthResult(
 expect fun platformSessionStore(): SessionStore
 expect fun platformLoadLastServerUrl(): String?
 expect fun platformSaveLastServerUrl(url: String)
+expect fun platformLoadThemeMode(): String?
+expect fun platformSaveThemeMode(mode: String)
 expect fun platformBiometricAvailable(): Boolean
 expect suspend fun platformAuthenticateBiometric(reason: String): BiometricAuthResult
 expect fun platformSecurityLabel(): String
@@ -40,6 +42,7 @@ data class PickedAttachment(
 expect fun platformPickAttachment(onResult:(PickedAttachment)->Unit)
 expect fun platformShareText(title:String,text:String): Boolean
 expect fun platformShareFile(title:String,fileName:String,data:ByteArray): Boolean
+expect fun platformShareTabularExport(title:String,baseName:String,headers:List<String>,rows:List<List<String>>,format:String): Boolean
 expect fun platformOpenExternalUrl(url:String): Boolean
 
 

@@ -98,6 +98,18 @@ internal fun DashboardScreen(
             DseMetricTile("Payable",money(s?.payables),Icons.Rounded.Receipt,Modifier.weight(1f),DseWarning)
             DseMetricTile("Bank",money(s?.cash),Icons.Rounded.AccountBalance,Modifier.weight(1f),DsePurple)
         }
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){
+            DseMetricTile("Sales Invoices",(s?.invoices?:0).toString(),Icons.Rounded.ReceiptLong,Modifier.weight(1f),DsePurple)
+            DseMetricTile("Purchase Invoices",(s?.purchases?:0).toString(),Icons.Rounded.ShoppingCart,Modifier.weight(1f),DseWarning)
+        }
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){
+            DseMetricTile("Customers",(s?.customers?:0).toString(),Icons.Rounded.Groups,Modifier.weight(1f),DseInfo)
+            DseMetricTile("Catalog Items",(s?.products?:0).toString(),Icons.Rounded.Inventory2,Modifier.weight(1f),DseSuccess)
+        }
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){
+            DseMetricTile("Purchase Value",money(s?.purchaseValue),Icons.Rounded.ShoppingBag,Modifier.weight(1f),DseWarning)
+            DseMetricTile("Low Stock",(s?.lowStock?:0).toString(),Icons.Rounded.WarningAmber,Modifier.weight(1f),if((s?.lowStock?:0)>0)DseDanger else DseSuccess)
+        }
 
         if(data==null)DseLoadingState("Loading dashboard records…")
 
@@ -135,6 +147,17 @@ internal fun DashboardScreen(
             if(p.can("PURCHASE","CREATE"))QuickActionTile("Purchase",Icons.Rounded.ShoppingBag,DseWarning,Modifier.weight(1f)){onTarget(RecordTarget("PURCHASE","__CREATE__"))}
             if(p.can("QUOTATION","CREATE"))QuickActionTile("Quote",Icons.Rounded.RequestQuote,DseInfo,Modifier.weight(1f)){onTarget(RecordTarget("QUOTATION","__CREATE__"))}
             if(p.can("CUSTOMERS","CREATE"))QuickActionTile("Customer",Icons.Rounded.PersonAdd,DseSuccess,Modifier.weight(1f)){onTarget(RecordTarget("CUSTOMER","__CREATE__"))}
+        }
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){
+            if(p.can("INVENTORY","CREATE"))QuickActionTile("Add Item",Icons.Rounded.Inventory2,DseInfo,Modifier.weight(1f)){onTarget(RecordTarget("ITEM","__CREATE__"))}
+            if(p.can("SUPPLIERS","CREATE"))QuickActionTile("Add Supplier",Icons.Rounded.LocalShipping,DseSuccess,Modifier.weight(1f)){onTarget(RecordTarget("SUPPLIER","__CREATE__"))}
+            if(p.can("BANK_EXPENSE","CREATE"))QuickActionTile("Bank Entry",Icons.Rounded.AccountBalance,DsePurple,Modifier.weight(1f)){onTarget(RecordTarget("FINANCE","__CREATE__",source="BANK_ENTRY"))}
+            if(p.can("BANK_EXPENSE","CREATE"))QuickActionTile("Expense Entry",Icons.Rounded.ReceiptLong,DseWarning,Modifier.weight(1f)){onTarget(RecordTarget("EXPENSE","__CREATE__",source="EXPENSE"))}
+        }
+
+        data?.ageing?.takeIf{it.isNotEmpty()}?.let{rows->
+            PremiumSectionHeader("Receivables Ageing")
+            rows.forEach{entry->val parts=entry.split('|',limit=2);val label=parts.firstOrNull().orEmpty();val amount=parts.getOrNull(1)?.toDoubleOrNull()?:0.0;Row(Modifier.fillMaxWidth().padding(horizontal=4.dp,vertical=3.dp),verticalAlignment=Alignment.CenterVertically){Text(label,Modifier.weight(1f),style=MaterialTheme.typography.bodyMedium);Text(money(amount),fontWeight=FontWeight.Bold)}}
         }
 
         data?.topCustomers?.take(4)?.takeIf{it.isNotEmpty()}?.let{rows->
@@ -196,7 +219,7 @@ private fun QuickActionTile(label:String,icon:androidx.compose.ui.graphics.vecto
         title={Text("Global Search")},
         text={Column(Modifier.fillMaxWidth().heightIn(max=620.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
             OutlinedTextField(
-                q,{q=it},label={Text("Search Jasvi Industries")},modifier=Modifier.fillMaxWidth(),singleLine=true,shape=MaterialTheme.shapes.medium,
+                q,{q=it},label={Text("Search ${BusinessBrandingState.displayName}")},modifier=Modifier.fillMaxWidth(),singleLine=true,shape=MaterialTheme.shapes.medium,
                 leadingIcon={Icon(Icons.Rounded.Search,null)},
                 trailingIcon={if(busy)Icon(Icons.Rounded.Sync,"Searching") else if(q.isNotBlank())IconButton(onClick={q="";rows=emptyList();msg="Search invoices, parties, items, payments, returns and bank records"}){Icon(Icons.Rounded.Clear,"Clear")}},
                 keyboardOptions=KeyboardOptions(imeAction=ImeAction.Search),

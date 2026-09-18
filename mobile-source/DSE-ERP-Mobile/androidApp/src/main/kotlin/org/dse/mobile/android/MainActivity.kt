@@ -128,6 +128,8 @@ class MainActivity : FragmentActivity() {
             clearToken = { secureTokenStore.clear() },
             loadServerUrl = { nativePrefs.getString(KEY_SERVER_URL, null) },
             saveServerUrl = { nativePrefs.edit().putString(KEY_SERVER_URL, it).apply() },
+            loadThemeMode = { nativePrefs.getString(KEY_THEME_MODE, null) },
+            saveThemeMode = { nativePrefs.edit().putString(KEY_THEME_MODE, it).apply() },
             biometricState = { if (biometricAvailable()) "AVAILABLE" else "UNAVAILABLE" },
             authenticateBiometric = { reason, completion -> authenticateBiometric(reason, completion) },
             pickImportFile = { completion ->
@@ -493,6 +495,7 @@ class MainActivity : FragmentActivity() {
 
     companion object {
         private const val KEY_SERVER_URL = "dse.erp.lastServerUrl"
+        private const val KEY_THEME_MODE = "dse.erp.themeMode"
         private const val KEY_PENDING_DEEP_LINK = "dse.erp.pendingDeepLink"
         private const val MAX_MOBILE_FILE_BYTES = 20 * 1024 * 1024
         private const val MAX_UPDATE_APK_BYTES = 200 * 1024 * 1024

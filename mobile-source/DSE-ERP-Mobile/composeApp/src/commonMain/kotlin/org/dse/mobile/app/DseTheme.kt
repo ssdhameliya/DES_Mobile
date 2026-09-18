@@ -7,6 +7,9 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -79,6 +82,13 @@ private val DseShapes = Shapes(
     extraLarge = RoundedCornerShape(30.dp),
 )
 
+
+internal object MobileThemeState {
+    var dark by mutableStateOf(platformLoadThemeMode().equals("DARK", true))
+        private set
+    fun updateDark(value:Boolean){ dark=value; platformSaveThemeMode(if(value)"DARK" else "LIGHT") }
+}
+
 private val DseTypography = Typography(
     displaySmall = TextStyle(fontSize = 34.sp, lineHeight = 40.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.8f).sp),
     headlineLarge = TextStyle(fontSize = 30.sp, lineHeight = 36.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.6f).sp),
@@ -97,8 +107,7 @@ private val DseTypography = Typography(
 
 @Composable
 fun DseErpTheme(darkTheme: Boolean = false, content: @Composable () -> Unit) {
-    // Premium mobile starts in the approved light visual language on every platform.
-    // The dark palette remains fully defined and can be exposed later as an in-app preference.
+    // Theme selection is persisted on the Android device and supplied by MobileThemeState.
     MaterialTheme(
         colorScheme = if (darkTheme) DseDarkColors else DseLightColors,
         typography = DseTypography,
