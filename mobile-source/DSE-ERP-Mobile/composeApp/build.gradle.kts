@@ -8,12 +8,6 @@ plugins {
 }
 
 kotlin {
-    jvm {
-        compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_21)
-        }
-    }
-
     android {
         namespace = "org.dse.mobile.compose"
         compileSdk = 36
@@ -36,17 +30,5 @@ kotlin {
             implementation(compose.materialIconsExtended)
             implementation(compose.ui)
         }
-
-        jvmMain.dependencies {
-            implementation(compose.desktop.currentOs)
-            implementation("org.apache.poi:poi:5.4.1")
-            implementation("org.apache.poi:poi-ooxml:5.4.1")
-        }
-    }
-}
-
-compose.desktop {
-    application {
-        mainClass = "org.dse.mobile.MainKt"
     }
 }

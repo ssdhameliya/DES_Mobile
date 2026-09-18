@@ -30,7 +30,7 @@ import org.dse.mobile.core.offline.platformOfflineNowMillis
 import org.dse.mobile.core.security.MobileSecurityPolicy
 
 enum class MainTab(val label:String){DASHBOARD("Dashboard"),SALES("Sales"),PURCHASE("Purchase"),BANK("Bank Statement"),IMPORT("Import"),MORE("More")}
-enum class MoreDestination(val label:String){PURCHASE("Purchase"),QUOTATIONS("Quotations"),SALES_RETURNS("Sales Returns"),PURCHASE_RETURNS("Purchase Returns"),MASTERS("Master Data"),INVENTORY("Inventory"),PURCHASE_RECON("Purchase Reconciliation"),COMMUNICATIONS("Communication Center"),REMINDERS("Reminders"),NOTIFICATIONS("Notifications"),REPORTS("Reports"),PROFILE("Profile & Password"),ADMIN("User Access & Roles"),IMPORT("Data Import"),SYNC("Sync Center"),ABOUT("About")}
+enum class MoreDestination(val label:String){PURCHASE("Purchase"),QUOTATIONS("Quotations"),SALES_RETURNS("Sales Returns"),PURCHASE_RETURNS("Purchase Returns"),MASTERS("Master Data"),INVENTORY("Inventory"),PURCHASE_RECON("Purchase Reconciliation"),AUDIT("Audit Trail"),SETTINGS("Settings"),COMMUNICATIONS("Communication Center"),REMINDERS("Reminders"),NOTIFICATIONS("Notifications"),REPORTS("Reports"),PROFILE("Profile & Password"),ADMIN("User Access & Roles"),IMPORT("Data Import"),SYNC("Sync Center"),ABOUT("About")}
 private enum class RootPage { STARTUP,LOGIN,MFA,APP }
 
 data class RecordTarget(
@@ -49,7 +49,7 @@ data class PermissionContext(val user:UserPayload?,val permissions:List<Effectiv
 }
 
 @Composable fun App(){
- DseErpTheme{
+ DseErpTheme(darkTheme=MobileThemeState.dark){
   val dialogs=remember{UiDialogController()}
   CompositionLocalProvider(LocalUiDialogController provides dialogs){
    val sessions=remember{platformSessionStore()}
@@ -491,7 +491,7 @@ private fun friendlyLoginMessage(message:String):String{
  PremiumAlertDialog(onDismissRequest=onClose,title={Text("Reset Password")},text={Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
   if(challenge.isBlank()){
    DseField("Username / email",identity,singleLine=true,required=true,onValue={identity=it})
-   Text("Jasvi Industries 10.0.9 sends a verification code to the registered email.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+   Text("Jasvi Industries 10.0.16 sends a verification code to the registered email.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
   } else {
    DseField("Email Verification Code",otp,singleLine=true,required=true,onValue={otp=it})
    DseField("Authenticator Code",totp,singleLine=true,supporting="Required when MFA is enrolled for this account",onValue={totp=it})
@@ -539,7 +539,7 @@ private fun friendlyLoginMessage(message:String):String{
      DseField("Answer",captchaAnswer,singleLine=true,required=true,icon=Icons.Rounded.VerifiedUser,onValue={captchaAnswer=it})
      TextButton(enabled=!busy,onClick={scope.launch{refreshCaptcha()}}){Icon(Icons.Rounded.Refresh,null);Spacer(Modifier.width(6.dp));Text("Refresh CAPTCHA")}
     }}
-    Text("Jasvi Industries 10.0.9 requires email verification, authenticator enrollment and administrator approval before first sign-in.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    Text("Jasvi Industries 10.0.16 requires email verification, authenticator enrollment and administrator approval before first sign-in.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
    }
    2->{
     Text("Email verification",style=MaterialTheme.typography.titleMedium)
@@ -604,9 +604,12 @@ private fun friendlyLoginMessage(message:String):String{
    "PURCHASE_RETURN"->{tab=MainTab.MORE;more=MoreDestination.PURCHASE_RETURNS}
    "QUOTATION","QUOTATIONS"->{tab=MainTab.MORE;more=MoreDestination.QUOTATIONS}
    "BANK","FINANCE","EXPENSE","BANK_STATEMENT"->{if(allowed(MainTab.BANK)){tab=MainTab.BANK;more=null}}
-   "ITEM","INVENTORY"->{tab=MainTab.MORE;more=MoreDestination.INVENTORY}
+   "ITEM"->{tab=MainTab.MORE;more=MoreDestination.MASTERS}
+   "INVENTORY"->{tab=MainTab.MORE;more=MoreDestination.INVENTORY}
    "PURCHASE_RECON","RECON"->{tab=MainTab.MORE;more=MoreDestination.PURCHASE_RECON}
    "REMINDER"->{tab=MainTab.MORE;more=MoreDestination.REMINDERS}
+   "AUDIT"->{tab=MainTab.MORE;more=MoreDestination.AUDIT}
+   "SETTINGS"->{tab=MainTab.MORE;more=MoreDestination.SETTINGS}
    "NOTIFICATION"->{tab=MainTab.MORE;more=MoreDestination.NOTIFICATIONS}
    "REPORT","REPORTS"->{tab=MainTab.MORE;more=MoreDestination.REPORTS}
    "CUSTOMER","SUPPLIER","PARTY","MASTER"->{tab=MainTab.MORE;more=MoreDestination.MASTERS}
@@ -654,14 +657,14 @@ private fun friendlyLoginMessage(message:String):String{
   recordTarget=RecordTarget(row.moduleKey.ifBlank{row.module},row.reference,row.recordId)
   globalSearch=false
  }
- LaunchedEffect(api){var ticks=0;while(true){online=api.health() is ApiResult.Success;if(ticks%30==0){(api.runtimeHealth() as? ApiResult.Success)?.value?.let{BusinessDateContext.update(it.businessDate,it.businessZone)}};ticks++;delay(30_000)}}
+ LaunchedEffect(api){refreshBusinessBranding(api);var ticks=0;while(true){online=api.health() is ApiResult.Success;if(ticks%30==0){(api.runtimeHealth() as? ApiResult.Success)?.value?.let{BusinessDateContext.update(it.businessDate,it.businessZone)}};ticks++;delay(30_000)}}
  LaunchedEffect(Unit){while(true){platformConsumeDeepLink()?.let(::routeDeepLink);delay(900)}}
  Scaffold(
   containerColor=MaterialTheme.colorScheme.background,
   topBar={
    TopAppBar(
     navigationIcon={Box(Modifier.padding(start=12.dp),contentAlignment=Alignment.Center){DseBrandMark(compact=true)}},
-    title={Column(Modifier.padding(start=6.dp)){Text("Jasvi Industries",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.ExtraBold);Text(tab.label,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}},
+    title={Column(Modifier.padding(start=6.dp)){Text(BusinessBrandingState.displayName,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.ExtraBold);Text(tab.label,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}},
     actions={
      IconButton(onClick={globalSearch=true}){Icon(Icons.Rounded.Search,"Global Search")}
      IconButton(onClick={tab=MainTab.MORE;more=MoreDestination.NOTIFICATIONS}){Icon(Icons.Rounded.NotificationsNone,"Notifications")}
@@ -703,7 +706,7 @@ private fun friendlyLoginMessage(message:String):String{
     MainTab.PURCHASE->if(permission.can("PURCHASE"))PurchaseWorkspace(api,permission,permission.user?.username.orEmpty(),recordTarget,{recordTarget=null}) else PermissionDenied("Purchase")
     MainTab.BANK->if(allowed(MainTab.BANK))BankFinanceWorkspace(api,permission,permission.user?.username.orEmpty(),recordTarget,{recordTarget=null},::routeTarget) else PermissionDenied("Bank & Finance")
     MainTab.IMPORT->if(allowed(MainTab.IMPORT))DataImportWorkspace(api,permission.user?.username.orEmpty()) else PermissionDenied("Data Import")
-    MainTab.MORE->MoreWorkspace(api,permission,permission.user?.username.orEmpty(),more,{more=it},{routeDeepLink(it)},recordTarget,{recordTarget=null})
+    MainTab.MORE->MoreWorkspace(api,permission,permission.user?.username.orEmpty(),more,{more=it},{routeDeepLink(it)},::routeTarget,recordTarget,{recordTarget=null})
    }
   }
  }
