@@ -50,7 +50,7 @@ private enum class SettingsSection(val label:String){COMPANY("Company"),PAYMENT(
         (api.storageStatus() as? ApiResult.Success)?.value?.let{storage=it}
         (api.latestUpdate(false) as? ApiResult.Success)?.value?.let{update=it}
         (api.setupStatus() as? ApiResult.Success)?.value?.let{setup=it}
-        (api.serverResources() as? ApiResult.Success)?.value?.let{resources=it}
+        (api.serverResources("BUSINESS_ASSET") as? ApiResult.Success)?.value?.let{resources=it}
         BusinessBrandingState.apply(loaded["company.name"],loaded["application.displayName"],loaded["application.tagline"]?:loaded["company.tagline"],loaded["application.startingText"])
         msg="Settings synchronized with server 10.0.16"
         busy=false
@@ -66,13 +66,21 @@ private enum class SettingsSection(val label:String){COMPANY("Company"),PAYMENT(
             SettingsSection.SECURITY->values.filterKeys{it.startsWith("security.")}
             else->emptyMap()
         }
-        val result=when(section){
-            SettingsSection.NOTIFICATIONS->api.saveNotificationPreferences(notification)
-            SettingsSection.EMAIL->api.saveEmailSettings(email)
-            SettingsSection.APPEARANCE,SettingsSection.SYSTEM->ApiResult.Success(OperationResponse(true,"Saved locally / read-only system section"),ApiDataSource.LIVE)
-            else->api.saveSettings(payload)
+        when(section){
+            SettingsSection.NOTIFICATIONS->when(val r=api.saveNotificationPreferences(notification)){
+                is ApiResult.Success->msg="Notification preferences saved"
+                else->msg=r.readableMessage()
+            }
+            SettingsSection.EMAIL->when(val r=api.saveEmailSettings(email)){
+                is ApiResult.Success->msg="Email / SMTP settings saved"
+                else->msg=r.readableMessage()
+            }
+            SettingsSection.APPEARANCE,SettingsSection.SYSTEM->msg="Saved locally / read-only system section"
+            else->when(val r=api.saveSettings(payload)){
+                is ApiResult.Success->{msg=r.value.message.ifBlank{"Settings saved"};refreshBusinessBranding(api)}
+                else->msg=r.readableMessage()
+            }
         }
-        when(result){is ApiResult.Success->{msg=result.value.message.ifBlank{"Settings saved"};refreshBusinessBranding(api)};else->msg=result.readableMessage()}
         busy=false
     }}
 
