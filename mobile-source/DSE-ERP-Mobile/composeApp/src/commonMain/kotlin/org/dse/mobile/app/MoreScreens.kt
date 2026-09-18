@@ -141,7 +141,7 @@ private fun moreSubtitle(d:MoreDestination)=when(d){
     MoreDestination.ABOUT->"App and environment information"
 }
 
-@Composable private fun PermissionDeniedCard(name:String,onBack:()->Unit){Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){Card{Column(Modifier.padding(20.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(8.dp)){Icon(Icons.Rounded.Lock,null);Text("No permission for $name");TextButton(onClick=onBack){Text("Back")}}}}}
+@Composable internal fun PermissionDeniedCard(name:String,onBack:()->Unit){Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){Card{Column(Modifier.padding(20.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(8.dp)){Icon(Icons.Rounded.Lock,null);Text("No permission for $name");TextButton(onClick=onBack){Text("Back")}}}}}
 private fun moreIcon(d:MoreDestination)=when(d){
     MoreDestination.PURCHASE->Icons.Rounded.ShoppingCart
     MoreDestination.QUOTATIONS->Icons.Rounded.RequestQuote
@@ -948,7 +948,7 @@ private fun reportShareText(from:String,to:String,type:String,r:ReportBundle)=bu
         }
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp)){PremiumSecondaryButton("Effective Access",{preview=true},Modifier.weight(1f),icon=Icons.Rounded.Visibility);if(canSave)PremiumPrimaryButton("Save Permissions",{scope.launch{when(val r=api.saveAdminPermissions(AdminPermissionSaveRequest(role,rows.map{AdminPermissionSave(it.id,it.allowed)},rowVersion))){is ApiResult.Success->{msg="Permissions saved";refresh++};else->msg=r.readableMessage()}}},Modifier.weight(1f),enabled=role.isNotBlank(),leadingIcon=Icons.Rounded.Save)}
         }
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(6.dp)){
+        Column(Modifier.fillMaxWidth().heightIn(max=520.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(6.dp)){
             shown.groupBy{it.module}.forEach{(module,permissions)->PremiumCard(Modifier.fillMaxWidth(),padding=9.dp){Text(module.replace('_',' ').lowercase().replaceFirstChar{it.uppercase()},fontWeight=FontWeight.ExtraBold);permissions.forEach{r->val index=rows.indexOfFirst{it.id==r.id};Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Checkbox(r.allowed,{checked->if(canSave&&index>=0)rows=rows.toMutableList().also{it[index]=r.copy(allowed=checked)}},enabled=canSave);Column(Modifier.weight(1f)){Text(r.action.replace('_',' ').lowercase().replaceFirstChar{it.uppercase()},fontWeight=FontWeight.SemiBold);if(r.description.isNotBlank())Text(r.description,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}}}
         }
     }
