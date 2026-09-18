@@ -107,7 +107,7 @@ private enum class SettingsSection(val label:String){COMPANY("Company"),PAYMENT(
             }
             SettingsSection.APPEARANCE->{
                 PremiumCard(Modifier.fillMaxWidth(),padding=12.dp){
-                    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f)){Text("Dark theme",fontWeight=FontWeight.Bold);Text("Stored on this Android device",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)};Switch(MobileThemeState.dark,{MobileThemeState.setDark(it)})}
+                    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f)){Text("Dark theme",fontWeight=FontWeight.Bold);Text("Stored on this Android device",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)};Switch(MobileThemeState.dark,{MobileThemeState.applyDark(it)})}
                 }
                 Text("Company-facing identity is loaded from the server instead of being hard-coded per screen.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
