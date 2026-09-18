@@ -162,13 +162,12 @@ jobs:
           EOF
           chmod 600 "$KEYSTORE" "$HOME/.gradle/gradle.properties"
 
-      - name: Run shared contract tests
+      - name: Verify Android/mobile source contracts
         working-directory: mobile-source/DSE-ERP-Mobile
         shell: bash
         run: |
           set -euo pipefail
-          chmod +x gradlew
-          ./gradlew :shared:jvmTest --console=plain
+          python3 scripts/verify-android-source.py
 
       - name: Build signed UAT APK
         working-directory: mobile-source/DSE-ERP-Mobile
