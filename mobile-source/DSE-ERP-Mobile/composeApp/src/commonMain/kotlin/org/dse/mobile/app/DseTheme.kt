@@ -85,7 +85,8 @@ private val DseShapes = Shapes(
 
 internal object MobileThemeState {
     var dark by mutableStateOf(platformLoadThemeMode().equals("DARK", true))
-    fun setDark(value:Boolean){ dark=value; platformSaveThemeMode(if(value)"DARK" else "LIGHT") }
+        private set
+    fun updateDark(value:Boolean){ dark=value; platformSaveThemeMode(if(value)"DARK" else "LIGHT") }
 }
 
 private val DseTypography = Typography(
