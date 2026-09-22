@@ -50,7 +50,7 @@ private enum class SettingsSection(val label:String){COMPANY("Company"),PAYMENT(
         (api.storageStatus() as? ApiResult.Success)?.value?.let{storage=it}
         (api.latestUpdate(false) as? ApiResult.Success)?.value?.let{update=it}
         (api.setupStatus() as? ApiResult.Success)?.value?.let{setup=it}
-        (api.serverResources() as? ApiResult.Success)?.value?.let{resources=it}
+        (api.serverResources("BUSINESS_ASSET") as? ApiResult.Success)?.value?.let{resources=it}
         BusinessBrandingState.apply(loaded["company.name"],loaded["application.displayName"],loaded["application.tagline"]?:loaded["company.tagline"],loaded["application.startingText"])
         msg="Settings synchronized with server 10.0.26"
         busy=false
@@ -66,13 +66,21 @@ private enum class SettingsSection(val label:String){COMPANY("Company"),PAYMENT(
             SettingsSection.SECURITY->values.filterKeys{it.startsWith("security.")}
             else->emptyMap()
         }
-        val result=when(section){
-            SettingsSection.NOTIFICATIONS->api.saveNotificationPreferences(notification)
-            SettingsSection.EMAIL->api.saveEmailSettings(email)
-            SettingsSection.APPEARANCE,SettingsSection.SYSTEM->ApiResult.Success(OperationResponse(true,"Saved locally / read-only system section"),ApiDataSource.LIVE)
-            else->api.saveSettings(payload)
+        when(section){
+            SettingsSection.NOTIFICATIONS->when(val r=api.saveNotificationPreferences(notification)){
+                is ApiResult.Success->{notification=r.value;msg="Notification preferences saved"}
+                else->msg=r.readableMessage()
+            }
+            SettingsSection.EMAIL->when(val r=api.saveEmailSettings(email)){
+                is ApiResult.Success->{email=r.value;msg="Email settings saved"}
+                else->msg=r.readableMessage()
+            }
+            SettingsSection.APPEARANCE,SettingsSection.SYSTEM->msg="Saved locally / read-only system section"
+            else->when(val r=api.saveSettings(payload)){
+                is ApiResult.Success->{msg=r.value.message.ifBlank{"Settings saved"};refreshBusinessBranding(api)}
+                else->msg=r.readableMessage()
+            }
         }
-        when(result){is ApiResult.Success->{msg=result.value.message.ifBlank{"Settings saved"};refreshBusinessBranding(api)};else->msg=result.readableMessage()}
         busy=false
     }}
 
@@ -107,7 +115,7 @@ private enum class SettingsSection(val label:String){COMPANY("Company"),PAYMENT(
             }
             SettingsSection.APPEARANCE->{
                 PremiumCard(Modifier.fillMaxWidth(),padding=12.dp){
-                    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f)){Text("Dark theme",fontWeight=FontWeight.Bold);Text("Stored on this Android device",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)};Switch(MobileThemeState.dark,{MobileThemeState.setDark(it)})}
+                    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f)){Text("Dark theme",fontWeight=FontWeight.Bold);Text("Stored on this Android device",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)};Switch(MobileThemeState.dark,{MobileThemeState.updateDark(it)})}
                 }
                 Text("Company-facing identity is loaded from the server instead of being hard-coded per screen.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
