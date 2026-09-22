@@ -3,6 +3,7 @@ package org.dse.mobile.app
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -141,7 +142,7 @@ private fun moreSubtitle(d:MoreDestination)=when(d){
     MoreDestination.ABOUT->"App and environment information"
 }
 
-@Composable private fun PermissionDeniedCard(name:String,onBack:()->Unit){Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){Card{Column(Modifier.padding(20.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(8.dp)){Icon(Icons.Rounded.Lock,null);Text("No permission for $name");TextButton(onClick=onBack){Text("Back")}}}}}
+@Composable internal fun PermissionDeniedCard(name:String,onBack:()->Unit){Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){Card{Column(Modifier.padding(20.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(8.dp)){Icon(Icons.Rounded.Lock,null);Text("No permission for $name");TextButton(onClick=onBack){Text("Back")}}}}}
 private fun moreIcon(d:MoreDestination)=when(d){
     MoreDestination.PURCHASE->Icons.Rounded.ShoppingCart
     MoreDestination.QUOTATIONS->Icons.Rounded.RequestQuote
