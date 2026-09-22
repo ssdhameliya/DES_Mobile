@@ -462,6 +462,7 @@ internal fun AttachmentManager(
     documentType:String,
     documentId:Int,
     canEdit:Boolean,
+    rowVersion:Long=-1,
     refreshKey:Int=0,
     onMessage:(String)->Unit={},
 ){
@@ -482,7 +483,7 @@ internal fun AttachmentManager(
             Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
                 Icon(Icons.Rounded.Description,null);Spacer(Modifier.width(8.dp));Text(a.fileName,Modifier.weight(1f));
                 IconButton(enabled=!busy,onClick={scope.launch{busy=true;when(val r=api.documentAttachmentFile(documentType,documentId,a.id)){is ApiResult.Success->{if(!platformShareFile(a.fileName,a.fileName,r.value))onMessage("Unable to open/share ${a.fileName}")};else->onMessage(r.readableMessage())};busy=false}}){Icon(Icons.Rounded.OpenInNew,"Open attachment")}
-                if(canEdit) IconButton(onClick={scope.launch{busy=true;when(val r=api.deleteDocumentAttachment(documentType,documentId,a.id)){is ApiResult.Success->{items=items.filterNot{it.id==a.id};onMessage("Attachment removed")};else->onMessage(r.readableMessage())};busy=false}}){Icon(Icons.Rounded.Delete,"Delete attachment")}
+                if(canEdit) IconButton(onClick={scope.launch{busy=true;when(val r=api.deleteDocumentAttachment(documentType,documentId,a.id,rowVersion)){is ApiResult.Success->{items=items.filterNot{it.id==a.id};onMessage("Attachment removed")};else->onMessage(r.readableMessage())};busy=false}}){Icon(Icons.Rounded.Delete,"Delete attachment")}
             }
         }
         if(canEdit&&documentId>0) PremiumSecondaryButton("Add Attachment",onClick={
@@ -493,7 +494,7 @@ internal fun AttachmentManager(
                 scope.launch{
                     busy=true
                     try {
-                        when(val r=api.addDocumentAttachment(documentType,documentId,name,decodeBase64Portable(encoded))){
+                        when(val r=api.addDocumentAttachment(documentType,documentId,name,decodeBase64Portable(encoded),rowVersion)){
                             is ApiResult.Success->{items=items+r.value;onMessage("Attached $name")}
                             else->onMessage(r.readableMessage())
                         }

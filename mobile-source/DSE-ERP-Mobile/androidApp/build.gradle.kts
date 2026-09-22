@@ -36,8 +36,8 @@ android {
         applicationId = "org.dse.erp.mobile"
         minSdk = 26
         targetSdk = 36
-        versionCode = 133
-        versionName = "1.2.13"
+        versionCode = 144
+        versionName = "1.2.24"
     }
 
     signingConfigs {

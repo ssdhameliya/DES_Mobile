@@ -214,7 +214,7 @@ private fun SalesDocumentCard(record:SaleRecord,onActions:()->Unit,onClick:()->U
                 add(PremiumActionSpec("Send Email",{loadFull(r){email=it}},enabled=documentOutputAllowed,disabledReason=if(!documentOutputAllowed)"Cancelled or deleted Sales cannot be emailed." else null))
                 val hasPhone=!r.customer?.phone.isNullOrBlank()
                 add(PremiumActionSpec("WhatsApp",{
-                    loadFull(r){full->val phone=full.customer?.phone.orEmpty().filter{it.isDigit()||it=='+'};if(phone.isBlank())msg="Customer phone is not configured" else {platformOpenExternalUrl("https://wa.me/${phone.filter{it.isDigit()}}?text=${urlEncode("${businessName()} Sale ${full.invoiceNo} • ${money(full.totalAmount)}")}");scope.launch{full.id?.let{api.markDocumentWhatsapp("SALE",it)}}}}
+                    loadFull(r){full->val phone=full.customer?.phone.orEmpty().filter{it.isDigit()||it=='+'};if(phone.isBlank())msg="Customer phone is not configured" else {platformOpenExternalUrl("https://wa.me/${phone.filter{it.isDigit()}}?text=${urlEncode("${businessName()} Sale ${full.invoiceNo} • ${money(full.totalAmount)}")}");scope.launch{full.id?.let{api.markDocumentWhatsapp("SALE",it,full.rowVersion)}}}}
                 },enabled=active&&!approvalLocked&&hasPhone,disabledReason=if(!hasPhone)"Customer phone is not configured." else "WhatsApp is available after approval."))
             }
             if(p.can("SALES","CREATE"))add(PremiumActionSpec("Duplicate Sale",{scope.launch{val id=r.id?:return@launch;when(val x=api.duplicateSale(id,username)){is ApiResult.Success->{msg="Duplicated as ${x.value.value}";refresh++};else->msg=x.readableMessage()}}},enabled=r.id!=null,disabledReason="Only saved Sales can be duplicated."))
@@ -235,7 +235,7 @@ private fun SalesDocumentCard(record:SaleRecord,onActions:()->Unit,onClick:()->U
     },{
         scope.launch{msg=shareCanonicalDocument(api,"SALES_INVOICE",r.invoiceNo,"XLSX")}
     },{
-        val phone=r.customer?.phone.orEmpty().filter{it.isDigit()||it=='+'};if(phone.isBlank())msg="Customer phone is not configured" else {platformOpenExternalUrl("https://wa.me/${phone.filter{it.isDigit()}}?text=${urlEncode("${businessName()} Sale ${r.invoiceNo} • ${money(r.totalAmount)}")}");scope.launch{r.id?.let{api.markDocumentWhatsapp("SALE",it)}}}
+        val phone=r.customer?.phone.orEmpty().filter{it.isDigit()||it=='+'};if(phone.isBlank())msg="Customer phone is not configured" else {platformOpenExternalUrl("https://wa.me/${phone.filter{it.isDigit()}}?text=${urlEncode("${businessName()} Sale ${r.invoiceNo} • ${money(r.totalAmount)}")}");scope.launch{r.id?.let{api.markDocumentWhatsapp("SALE",it,r.rowVersion)}}}
     },{
         scope.launch{val id=r.id?:return@launch;when(val x=api.duplicateSale(id,username)){is ApiResult.Success->{msg="Duplicated as ${x.value.value}";selected=null;refresh++};else->msg=x.readableMessage()}}
     },{confirm="cancel" to r},{confirm="delete" to r},{scope.launch{when(val x=api.saleAction(r.invoiceNo,"approve")){is ApiResult.Success->{msg=x.value.message;selected=null;refresh++};else->msg=x.readableMessage()}}},{reject=r;selected=null})}
@@ -430,7 +430,7 @@ private fun SaleDetailDialog(
                 "Notes" to r.notes.orEmpty(),"Items" to r.lines.size.toString()
             ))
             if(r.lines.isNotEmpty())DseSection("Items",Icons.Rounded.Inventory2){r.lines.forEach{l->Text("${l.itemCode} • ${l.itemDescription.orEmpty()} • ${l.quantity} × ${money(l.rate)} • GST ${l.gstPercent}% • ${money(l.totalAmount)}",style=MaterialTheme.typography.bodySmall)}}
-            r.id?.let{AttachmentManager(api,"SALE",it,p.can("SALES","EDIT"))}
+            r.id?.let{AttachmentManager(api,"SALE",it,p.can("SALES","EDIT"),r.rowVersion)}
             Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){PremiumIconTile(Icons.Rounded.TouchApp,MaterialTheme.colorScheme.primary,size=36.dp);Column{Text("Actions",fontWeight=FontWeight.ExtraBold);Text("Invoice actions",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
             PremiumActionGrid(buildList{
                 if(canEdit)add(PremiumActionSpec("Edit",onEdit))
@@ -491,7 +491,7 @@ private fun PurchaseDetailDialog(
                 "Contact" to r.contactPerson.orEmpty(),"Contact Mobile" to r.contactPersonMobile.orEmpty(),"Notes" to r.notes.orEmpty(),"Items" to r.lines.size.toString()
             ))
             if(r.lines.isNotEmpty())DseSection("Items",Icons.Rounded.Inventory2){r.lines.forEach{l->Text("${l.itemCode} • ${l.itemDescription.orEmpty()} • ${l.quantity} × ${money(l.rate,currency)} • GST ${l.gstPercent}% • ${money(l.totalAmount,currency)}",style=MaterialTheme.typography.bodySmall)}}
-            r.id?.let{AttachmentManager(api,"PURCHASE",it,p.can("PURCHASE","EDIT"))}
+            r.id?.let{AttachmentManager(api,"PURCHASE",it,p.can("PURCHASE","EDIT"),r.rowVersion)}
             Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){PremiumIconTile(Icons.Rounded.TouchApp,MaterialTheme.colorScheme.primary,size=36.dp);Column{Text("Actions",fontWeight=FontWeight.ExtraBold);Text("Purchase document actions",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
             PremiumActionGrid(buildList{
                 if(canEdit)add(PremiumActionSpec("Edit",onEdit))
@@ -926,7 +926,7 @@ internal fun PaymentDialog(api:DseErpHttpClient,type:String,documentId:Int,docum
 private fun PaymentEditDialog(api:DseErpHttpClient,row:PaymentRow,onClose:()->Unit,onDone:(String)->Unit){
     var date by remember{mutableStateOf(row.date)};var amount by remember{mutableStateOf(row.amount.toString())};var mode by remember{mutableStateOf(row.mode)};var reference by remember{mutableStateOf(row.reference)};var notes by remember{mutableStateOf(row.notes)};var from by remember{mutableStateOf(row.receivedFrom)};var modes by remember{mutableStateOf<List<String>>(emptyList())};var msg by remember{mutableStateOf("")};val scope=rememberCoroutineScope()
     LaunchedEffect(Unit){modes=(api.lookupValuesByCode("PAYMENT_MODE") as? ApiResult.Success)?.value.orEmpty()}
-    PremiumAlertDialog(onDismissRequest=onClose,title={Text("Edit Payment #${row.id}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){DseDateField("Date",date,required=true,onValue={date=it});DseNumberField("Amount",amount,min=0.01,required=true,onValue={amount=it});DseSelect("Mode",mode,modes.ifEmpty{listOf(row.mode)},required=true,onValue={mode=it});DseField("Reference",reference,singleLine=true,onValue={reference=it});DseField("Received From / Paid To",from,singleLine=true,onValue={from=it});DseField("Notes",notes,onValue={notes=it});DseMessageFeedback(msg)}},confirmButton={Button(onClick={scope.launch{when(val r=api.updatePayment(row.id,PaymentUpdateRequest(date,amount.toDoubleOrNull()?:0.0,mode,reference,notes,from))){is ApiResult.Success->onDone("Payment updated");else->msg=r.readableMessage()}}}){Text("Save")}},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})
+    PremiumAlertDialog(onDismissRequest=onClose,title={Text("Edit Payment #${row.id}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){DseDateField("Date",date,required=true,onValue={date=it});DseNumberField("Amount",amount,min=0.01,required=true,onValue={amount=it});DseSelect("Mode",mode,modes.ifEmpty{listOf(row.mode)},required=true,onValue={mode=it});DseField("Reference",reference,singleLine=true,onValue={reference=it});DseField("Received From / Paid To",from,singleLine=true,onValue={from=it});DseField("Notes",notes,onValue={notes=it});DseMessageFeedback(msg)}},confirmButton={Button(onClick={scope.launch{when(val r=api.updatePayment(row.id,PaymentUpdateRequest(date,amount.toDoubleOrNull()?:0.0,mode,reference,notes,from,row.rowVersion))){is ApiResult.Success->onDone("Payment updated");else->msg=r.readableMessage()}}}){Text("Save")}},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})
 }
 
 @Composable
@@ -1038,7 +1038,7 @@ private suspend fun exportSalesCsv(api:DseErpHttpClient,filter:SalesFilter):ApiR
     return ApiResult.ServerError(400,"Sales export exceeded safe page limit")
 }
 private suspend fun exportSalesRegister(api:DseErpHttpClient,filter:SalesFilter,format:String):String=when(val x=exportSalesCsv(api,filter)){
-    is ApiResult.Success->{val headers=listOf("Invoice","Date","Customer","GSTIN","Amount","Paid","Outstanding","Due","Document Status","Payment Status","Email","WhatsApp");val rows=x.value.map{r->listOf(r.invoiceNo,r.invoiceDate,r.customer?.name.orEmpty(),r.customer?.gstin.orEmpty(),r.totalAmount.toString(),r.paidAmount.toString(),(r.totalAmount-r.paidAmount).coerceAtLeast(0.0).toString(),r.dueDate.orEmpty(),r.documentStatus.orEmpty(),r.paymentStatus.orEmpty(),if(r.emailSent)"SENT" else "PENDING",if(r.whatsappSent)"SENT" else "PENDING")};if(platformShareTabularExport("Sales Register","${businessName().replace(" ","_")}_Sales_Register",headers,rows,format))"Sales $format export prepared" else "Unable to prepare Sales $format export"}
+    is ApiResult.Success->{val headers=listOf("Invoice","Date","Customer","GSTIN","Amount","Paid","Outstanding","Due","Document Status","Payment Status","Return Status","Email","WhatsApp");val rows=x.value.map{r->listOf(r.invoiceNo,r.invoiceDate,r.customer?.name.orEmpty(),r.customer?.gstin.orEmpty(),r.totalAmount.toString(),r.paidAmount.toString(),(r.totalAmount-r.paidAmount).coerceAtLeast(0.0).toString(),r.dueDate.orEmpty(),r.documentStatus.orEmpty(),r.paymentStatus.orEmpty(),r.returnStatus.orEmpty(),if(r.emailSent)"SENT" else "PENDING",if(r.whatsappSent)"SENT" else "PENDING")};if(platformShareTabularExport("Sales Register","${businessName().replace(" ","_")}_Sales_Register",headers,rows,format))"Sales $format export prepared" else "Unable to prepare Sales $format export"}
     else->x.readableMessage()
 }
 private suspend fun exportPurchasesCsv(api:DseErpHttpClient,filter:PurchaseFilter):ApiResult<List<PurchaseRecord>>{
@@ -1047,7 +1047,7 @@ private suspend fun exportPurchasesCsv(api:DseErpHttpClient,filter:PurchaseFilte
     return ApiResult.ServerError(400,"Purchase export exceeded safe page limit")
 }
 private suspend fun exportPurchaseRegister(api:DseErpHttpClient,filter:PurchaseFilter,format:String):String=when(val x=exportPurchasesCsv(api,filter)){
-    is ApiResult.Success->{val headers=listOf("Invoice","Date","Supplier","GSTIN","Currency","Amount","Paid","Outstanding","Due","Document Status","Payment Status","Email");val rows=x.value.map{r->listOf(r.invoiceNo,r.invoiceDate,r.supplier?.name.orEmpty(),r.supplier?.gstin.orEmpty(),r.currency.orEmpty(),r.totalAmount.toString(),r.paidAmount.toString(),(r.totalAmount-r.paidAmount).coerceAtLeast(0.0).toString(),r.dueDate.orEmpty(),r.documentStatus.orEmpty(),r.paymentStatus.orEmpty(),if(r.emailSent)"SENT" else "PENDING")};if(platformShareTabularExport("Purchase Register","${businessName().replace(" ","_")}_Purchase_Register",headers,rows,format))"Purchase $format export prepared" else "Unable to prepare Purchase $format export"}
+    is ApiResult.Success->{val headers=listOf("Invoice","Date","Supplier","GSTIN","Currency","Amount","Paid","Outstanding","Due","Document Status","Payment Status","Return Status","Email");val rows=x.value.map{r->listOf(r.invoiceNo,r.invoiceDate,r.supplier?.name.orEmpty(),r.supplier?.gstin.orEmpty(),r.currency.orEmpty(),r.totalAmount.toString(),r.paidAmount.toString(),(r.totalAmount-r.paidAmount).coerceAtLeast(0.0).toString(),r.dueDate.orEmpty(),r.documentStatus.orEmpty(),r.paymentStatus.orEmpty(),r.returnStatus.orEmpty(),if(r.emailSent)"SENT" else "PENDING")};if(platformShareTabularExport("Purchase Register","${businessName().replace(" ","_")}_Purchase_Register",headers,rows,format))"Purchase $format export prepared" else "Unable to prepare Purchase $format export"}
     else->x.readableMessage()
 }
 private fun <T> ApiResult<*>.mapFailure():ApiResult<T> = when(this){

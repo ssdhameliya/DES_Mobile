@@ -22,7 +22,7 @@ fun evaluateMobileCompatibility(
     clientType: String,
     currentVersion: String = MobileBuildInfo.MOBILE_VERSION_NAME,
 ): MobileCompatibilityDecision {
-    // Mobile 1.2.13 is Android-only. Keep clientType in the public signature for source compatibility,
+    // Mobile 1.2.24 is Android-only. Keep clientType in the public signature for source compatibility,
     // but intentionally evaluate only the environment-owned Android policy.
     val minimum = status.minimumSupportedAndroidVersion.trim()
     val latest = status.latestAndroidVersion.trim()

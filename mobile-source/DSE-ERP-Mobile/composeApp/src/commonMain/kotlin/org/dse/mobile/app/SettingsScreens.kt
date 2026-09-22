@@ -28,7 +28,7 @@ private enum class SettingsSection(val label:String){COMPANY("Company"),PAYMENT(
     var update by remember{mutableStateOf<UpdateReleaseView?>(null)}
     var setup by remember{mutableStateOf<SetupStatus?>(null)}
     var resources by remember{mutableStateOf<List<ServerResourceMeta>>(emptyList())}
-    var msg by remember{mutableStateOf("Loading 10.0.16 settings…")}
+    var msg by remember{mutableStateOf("Loading 10.0.26 settings…")}
     var refresh by remember{mutableIntStateOf(0)}
     var busy by remember{mutableStateOf(false)}
     val scope=rememberCoroutineScope()
@@ -50,9 +50,9 @@ private enum class SettingsSection(val label:String){COMPANY("Company"),PAYMENT(
         (api.storageStatus() as? ApiResult.Success)?.value?.let{storage=it}
         (api.latestUpdate(false) as? ApiResult.Success)?.value?.let{update=it}
         (api.setupStatus() as? ApiResult.Success)?.value?.let{setup=it}
-        (api.serverResources("BUSINESS_ASSET") as? ApiResult.Success)?.value?.let{resources=it}
+        (api.serverResources() as? ApiResult.Success)?.value?.let{resources=it}
         BusinessBrandingState.apply(loaded["company.name"],loaded["application.displayName"],loaded["application.tagline"]?:loaded["company.tagline"],loaded["application.startingText"])
-        msg="Settings synchronized with server 10.0.16"
+        msg="Settings synchronized with server 10.0.26"
         busy=false
     }
     fun set(k:String,v:String){values=values.toMutableMap().also{it[k]=v}}
@@ -66,26 +66,18 @@ private enum class SettingsSection(val label:String){COMPANY("Company"),PAYMENT(
             SettingsSection.SECURITY->values.filterKeys{it.startsWith("security.")}
             else->emptyMap()
         }
-        when(section){
-            SettingsSection.NOTIFICATIONS->when(val r=api.saveNotificationPreferences(notification)){
-                is ApiResult.Success->msg="Notification preferences saved"
-                else->msg=r.readableMessage()
-            }
-            SettingsSection.EMAIL->when(val r=api.saveEmailSettings(email)){
-                is ApiResult.Success->msg="Email / SMTP settings saved"
-                else->msg=r.readableMessage()
-            }
-            SettingsSection.APPEARANCE,SettingsSection.SYSTEM->msg="Saved locally / read-only system section"
-            else->when(val r=api.saveSettings(payload)){
-                is ApiResult.Success->{msg=r.value.message.ifBlank{"Settings saved"};refreshBusinessBranding(api)}
-                else->msg=r.readableMessage()
-            }
+        val result=when(section){
+            SettingsSection.NOTIFICATIONS->api.saveNotificationPreferences(notification)
+            SettingsSection.EMAIL->api.saveEmailSettings(email)
+            SettingsSection.APPEARANCE,SettingsSection.SYSTEM->ApiResult.Success(OperationResponse(true,"Saved locally / read-only system section"),ApiDataSource.LIVE)
+            else->api.saveSettings(payload)
         }
+        when(result){is ApiResult.Success->{msg=result.value.message.ifBlank{"Settings saved"};refreshBusinessBranding(api)};else->msg=result.readableMessage()}
         busy=false
     }}
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal=12.dp,vertical=8.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
-        DseHeroKpi("Settings","Desktop 10.0.16 parity","Server-owned configuration • Android presentation",Icons.Rounded.Settings)
+        DseHeroKpi("Settings","Desktop 10.0.26 parity","Server-owned configuration • Android presentation",Icons.Rounded.Settings)
         ScrollableTabRow(SettingsSection.entries.indexOf(section),edgePadding=0.dp){SettingsSection.entries.forEach{s->Tab(section==s,{section=s},text={Text(s.label)})}}
         DseMessageFeedback(msg)
         when(section){
@@ -115,7 +107,7 @@ private enum class SettingsSection(val label:String){COMPANY("Company"),PAYMENT(
             }
             SettingsSection.APPEARANCE->{
                 PremiumCard(Modifier.fillMaxWidth(),padding=12.dp){
-                    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f)){Text("Dark theme",fontWeight=FontWeight.Bold);Text("Stored on this Android device",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)};Switch(MobileThemeState.dark,{MobileThemeState.updateDark(it)})}
+                    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f)){Text("Dark theme",fontWeight=FontWeight.Bold);Text("Stored on this Android device",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)};Switch(MobileThemeState.dark,{MobileThemeState.setDark(it)})}
                 }
                 Text("Company-facing identity is loaded from the server instead of being hard-coded per screen.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }

@@ -7,6 +7,7 @@ object ExistingErpRoutes {
     const val CHANGE_PASSWORD="/api/auth/password"
     const val LOGIN="/api/auth/login"
     const val MFA_COMPLETE="/api/auth/login/mfa/complete"
+    const val MFA_ENROLLMENT="/api/auth/login/mfa/enrollment"
     const val MFA_RESEND="/api/auth/login/mfa/resend"
     const val PASSWORD_RESET_REQUEST="/api/auth/password-reset/request"
     const val PASSWORD_RESET_COMPLETE="/api/auth/password-reset/complete"
@@ -46,9 +47,11 @@ object ExistingErpRoutes {
     const val QUOTATIONS="/api/quotations"
     const val QUOTATIONS_PAGE="/api/quotations/page"
     const val QUOTATION_SOURCES="/api/quotations/sources"
+    const val QUOTATION_BY_NUMBER="/api/quotations/by-number"
 
     const val RETURNS="/api/returns"
     const val RETURNS_PAGE="/api/returns/page"
+    const val RETURNABLE_LINES="/api/returns/returnable-lines"
 
     const val BANK_STATEMENTS="/api/bank-statements"
     const val PURCHASE_RECON="/api/purchase-recon"
@@ -58,6 +61,7 @@ object ExistingErpRoutes {
     const val PARTIES_NEXT="/api/master/parties/next-code"
     const val ITEMS="/api/master/items"
     const val ITEMS_SEARCH="/api/master/items/search"
+    const val ITEMS_BY_CODES="/api/master/items/by-codes"
     const val ITEMS_NEXT="/api/master/items/next-code"
     const val SALES_ENTRY_BOOTSTRAP="/api/master/sales-entry-bootstrap"
     const val LOOKUPS="/api/master/lookups"
@@ -98,6 +102,8 @@ object ExistingErpRoutes {
     const val SHELL_COUNTS="$INSIGHTS/shell-counts"
     const val REPORTS="$INSIGHTS/reports"
     const val REPORT_FILTERS="$INSIGHTS/reports/filters"
+    const val REPORTING="/api/reporting"
+    const val REPORTING_SCHEDULES="$REPORTING/schedules"
 
     const val ADMIN="/api/admin"
     const val ADMIN_USERS="$ADMIN/users"

@@ -52,7 +52,7 @@ data class OfflineAuthSnapshot(
  * Mobile-only durable cache/outbox.
  *
  * Cached reads are explicitly tagged as CACHE so screens never present stale data as live.
- * Writes are never queued after an ambiguous transport/decode failure because server v10.0.16
+ * Writes are never queued after an ambiguous transport/decode failure because server v10.0.26
  * does not expose an idempotency-key contract. Offline drafts may only be queued after a
  * preflight health check proves that the server is unreachable before the business write begins.
  */
@@ -185,7 +185,7 @@ object OfflineRepository {
         val result: ApiResult<*> = try {
             when (item.kind) {
                 OfflineMutationKind.CREATE_SALE, OfflineMutationKind.CREATE_PURCHASE, OfflineMutationKind.CREATE_FINANCE ->
-                    return "${item.label} is a legacy offline CREATE. v1.2.13 will not replay it without a server idempotency key. Verify ERP and recreate the document manually if it is not present."
+                    return "${item.label} is a legacy offline CREATE. v1.2.24 will not replay it without a server idempotency key. Verify ERP and recreate the document manually if it is not present."
                 OfflineMutationKind.UPDATE_SALE -> api.updateSale(json.decodeFromString<SaleRecord>(item.payload))
                 OfflineMutationKind.UPDATE_PURCHASE -> api.updatePurchase(json.decodeFromString<PurchaseRecord>(item.payload))
                 OfflineMutationKind.UPDATE_FINANCE -> api.updateFinance(json.decodeFromString<FinanceRecord>(item.payload))

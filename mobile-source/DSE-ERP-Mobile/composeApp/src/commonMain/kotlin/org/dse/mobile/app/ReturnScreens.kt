@@ -17,10 +17,10 @@ import org.dse.mobile.core.api.*
 import org.dse.mobile.core.model.*
 
 private data class ReturnLineDraft(
+    val sourceLineId:Long,
     val code:String,
     val description:String,
-    val sourceLines:Int,
-    val rate:Double?,
+    val rate:Double,
     val invoiced:Double,
     val previouslyReturned:Double,
     val eligible:Double,
@@ -178,27 +178,24 @@ private fun ReturnFilterDialog(current:ReturnFilter,onClose:()->Unit,onApply:(Re
 @Composable
 internal fun ReturnCreateDialog(api:DseErpHttpClient,source:ReturnSource,onClose:()->Unit,onDone:(String)->Unit){
     val type=if(source.type.equals("SALE",true))"SALES RETURN" else "PURCHASE RETURN"
-    var date by remember{mutableStateOf(todayIso())};var already by remember{mutableStateOf<Map<String,Double>>(emptyMap())};val drafts=remember{mutableStateListOf<ReturnLineDraft>()};var msg by remember{mutableStateOf("Loading eligible quantities…")};val scope=rememberCoroutineScope()
+    var date by remember{mutableStateOf(todayIso())};val drafts=remember{mutableStateListOf<ReturnLineDraft>()};var msg by remember{mutableStateOf("Loading returnable source lines…")};val scope=rememberCoroutineScope()
     LaunchedEffect(source.invoiceNo){
-        when(val r=api.returnedQuantities(type,source.invoiceNo)){
+        when(val r=api.returnableLines(type,source.invoiceNo)){
             is ApiResult.Success->{
-                already=r.value;drafts.clear()
-                source.lines.groupBy{it.itemCode}.forEach{(code,sourceRows)->
-                    val invoiced=sourceRows.sumOf{it.quantity}
-                    val previously=(already[code]?:0.0).coerceAtMost(invoiced)
-                    val rates=sourceRows.map{it.rate}.distinct()
-                    val description=sourceRows.mapNotNull{it.itemDescription?.takeIf { value -> value.isNotBlank() }}.distinct().joinToString(" / ").ifBlank{code}
-                    drafts+=ReturnLineDraft(code,description,sourceRows.size,rates.singleOrNull(),invoiced,previously,(invoiced-previously).coerceAtLeast(0.0))
+                drafts.clear()
+                r.value.forEach{line->
+                    val eligible=(line.quantity-line.returnedQuantity).coerceAtLeast(0.0)
+                    drafts+=ReturnLineDraft(line.sourceLineId,line.code,line.description.ifBlank{line.code},line.rate,line.quantity,line.returnedQuantity,eligible)
                 }
-                msg="Return eligibility follows the certified ERP API contract at item-code level. When the same item appears on multiple invoice lines, Mobile combines those lines and the server allocates the returned quantity across the original invoice snapshots in its authoritative order. Return amount is calculated by the server."
+                msg=if(drafts.isEmpty())"No returnable invoice lines remain." else "Select quantities against the exact original invoice lines. Previously returned quantities are already deducted by the server."
             }
             else->msg=r.readableMessage()
         }
     }
     PremiumAlertDialog(onDismissRequest=onClose,title={Text("Create ${if(source.type=="SALE")"Sales" else "Purchase"} Return • ${source.invoiceNo}")},text={Column(Modifier.heightIn(max=680.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){
         detailReturnSource(source);DseDateField("Return Date",date,required=true,onValue={date=it});Text(msg,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-        drafts.forEachIndexed{i,d->DseSection("${d.code} • ${d.description}",Icons.Rounded.Inventory2){val sourceLabel=if(d.sourceLines>1)"${d.sourceLines} original invoice lines • server item-level allocation" else "1 original invoice line${d.rate?.let{" • rate ${money(it)}"}.orEmpty()}";Text("$sourceLabel • invoiced ${d.invoiced} • previously returned ${d.previouslyReturned} • eligible ${d.eligible}",style=MaterialTheme.typography.bodySmall);DseNumberField("Return Quantity",d.qty,enabled=d.eligible>0,min=0.0,max=d.eligible,required=true,onValue={v->drafts[i]=d.copy(qty=v)});DseField("Reason",d.reason,onValue={v->drafts[i]=d.copy(reason=v)})}}
-    }},confirmButton={val chosen=drafts.filter{(it.qty.toDoubleOrNull()?:0.0)>0};Button(enabled=source.partyId>0&&chosen.isNotEmpty()&&chosen.all{(it.qty.toDoubleOrNull()?:0.0)<=it.eligible+0.0001},onClick={scope.launch{val lines=chosen.map{ReturnCreateLine(it.code,it.qty.toDoubleOrNull()?:0.0,0.0,it.reason)};when(val r=api.createReturn(ReturnCreateRequest(type,source.invoiceNo,source.partyId,date,lines))){is ApiResult.Success->onDone("Created ${r.value.returnNo} • PENDING APPROVAL");else->msg=r.readableMessage()}}}){Text("Create Pending Return")}},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})
+        drafts.forEachIndexed{i,d->DseSection("${d.code} • ${d.description}",Icons.Rounded.Inventory2){Text("Original line #${d.sourceLineId} • rate ${money(d.rate)} • invoiced ${d.invoiced} • previously returned ${d.previouslyReturned} • eligible ${d.eligible}",style=MaterialTheme.typography.bodySmall);DseNumberField("Return Quantity",d.qty,enabled=d.eligible>0,min=0.0,max=d.eligible,required=true,onValue={v->drafts[i]=d.copy(qty=v)});DseField("Reason",d.reason,onValue={v->drafts[i]=d.copy(reason=v)})}}
+    }},confirmButton={val chosen=drafts.filter{(it.qty.toDoubleOrNull()?:0.0)>0};Button(enabled=source.partyId>0&&chosen.isNotEmpty()&&chosen.all{(it.qty.toDoubleOrNull()?:0.0)<=it.eligible+0.0001},onClick={scope.launch{val lines=chosen.map{ReturnCreateLine(it.code,it.sourceLineId,it.qty.toDoubleOrNull()?:0.0,0.0,it.reason)};when(val r=api.createReturn(ReturnCreateRequest(type,source.invoiceNo,source.partyId,date,lines))){is ApiResult.Success->onDone("Created ${r.value.returnNo} • PENDING APPROVAL");else->msg=r.readableMessage()}}}){Text("Create Pending Return")}},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})
 }
 
 @Composable
@@ -234,7 +231,7 @@ private fun ReturnAttachmentDialog(api:DseErpHttpClient,d:ReturnDetails,onClose:
 @Composable
 private fun ReturnNotesDialog(api:DseErpHttpClient,d:ReturnDetails,onClose:()->Unit,onDone:(String)->Unit){
     var field by remember{mutableStateOf("notes")};var value by remember{mutableStateOf(d.notes)};var msg by remember{mutableStateOf("")};val scope=rememberCoroutineScope()
-    PremiumAlertDialog(onDismissRequest=onClose,title={Text("Edit ${d.no}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){DseSelect("Editable Field",field,listOf("notes","reason"),onValue={field=it});DseField(if(field=="notes")"Notes" else "Reason",value,onValue={value=it});Text("Return status cannot be edited here. Approve/Reject/Cancel are protected lifecycle actions.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);DseMessageFeedback(msg)}},confirmButton={Button(onClick={scope.launch{when(val r=api.updateReturn(d.no,field,value)){is ApiResult.Success->onDone(r.value.message.ifBlank{"Return updated"});else->msg=r.readableMessage()}}}){Text("Save")}},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})
+    PremiumAlertDialog(onDismissRequest=onClose,title={Text("Edit ${d.no}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){DseSelect("Editable Field",field,listOf("notes","reason"),onValue={field=it});DseField(if(field=="notes")"Notes" else "Reason",value,onValue={value=it});Text("Return status cannot be edited here. Approve/Reject/Cancel are protected lifecycle actions.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);DseMessageFeedback(msg)}},confirmButton={Button(onClick={scope.launch{when(val r=api.updateReturn(d.no,field,value,d.rowVersion)){is ApiResult.Success->onDone(r.value.message.ifBlank{"Return updated"});else->msg=r.readableMessage()}}}){Text("Save")}},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})
 }
 
 

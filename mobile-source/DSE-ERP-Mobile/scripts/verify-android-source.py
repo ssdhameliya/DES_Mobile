@@ -77,8 +77,8 @@ checks={
  'androidApp module': 'include(":androidApp")' in (root/'settings.gradle.kts').read_text(),
  'AGP app plugin': 'com.android.application' in (root/'build.gradle.kts').read_text(),
  'KMP Android plugin': 'com.android.kotlin.multiplatform.library' in (root/'build.gradle.kts').read_text(),
- '10.0.16 baseline': 'SERVER_BASELINE = "10.0.16"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
- 'mobile 1.2.13': 'FALLBACK_MOBILE_VERSION_NAME = "1.2.13"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
+ '10.0.26 baseline': 'SERVER_BASELINE = "10.0.26"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
+ 'mobile 1.2.24': 'FALLBACK_MOBILE_VERSION_NAME = "1.2.24"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
  'server-driven mobile policy': (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileCompatibility.kt').is_file(),
  '10.0.1 runtime floor': 'MINIMUM_COMPATIBLE_SERVER_VERSION = "10.0.1"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
  'API revision bearer v5': 'EXPECTED_API_REVISION = "spring-security-bearer-v5"' in (root/'shared/src/commonMain/kotlin/org/dse/mobile/core/config/MobileBuildInfo.kt').read_text(),
@@ -156,7 +156,7 @@ for key,value in checks.items():
 health_model=(root/'shared/src/commonMain/kotlin/org/dse/mobile/core/model/AuthModels.kt').read_text()
 for field in ['minimumSupportedDesktopVersion','latestDesktopVersion','minimumSupportedAndroidVersion','latestAndroidVersion','minimumSupportedIosVersion','latestIosVersion','environment','databaseName','utcTime','dateFormat','timePolicy']:
     ok=f'val {field}:' in health_model
-    print(f'10.0.16 runtime health field {field}: {"OK" if ok else "FAIL"}')
+    print(f'10.0.26 runtime health field {field}: {"OK" if ok else "FAIL"}')
     failed |= not ok
 
 app_text=(root/'composeApp/src/commonMain/kotlin/org/dse/mobile/app/App.kt').read_text()

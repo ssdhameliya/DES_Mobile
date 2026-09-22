@@ -141,7 +141,7 @@ private fun moreSubtitle(d:MoreDestination)=when(d){
     MoreDestination.ABOUT->"App and environment information"
 }
 
-@Composable internal fun PermissionDeniedCard(name:String,onBack:()->Unit){Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){Card{Column(Modifier.padding(20.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(8.dp)){Icon(Icons.Rounded.Lock,null);Text("No permission for $name");TextButton(onClick=onBack){Text("Back")}}}}}
+@Composable private fun PermissionDeniedCard(name:String,onBack:()->Unit){Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){Card{Column(Modifier.padding(20.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(8.dp)){Icon(Icons.Rounded.Lock,null);Text("No permission for $name");TextButton(onClick=onBack){Text("Back")}}}}}
 private fun moreIcon(d:MoreDestination)=when(d){
     MoreDestination.PURCHASE->Icons.Rounded.ShoppingCart
     MoreDestination.QUOTATIONS->Icons.Rounded.RequestQuote
@@ -478,7 +478,7 @@ private enum class MasterMode(val label:String){CUSTOMERS("Customers"),SUPPLIERS
             if(p.can("PURCHASE_RECON","DELETE")&&r.linkedAmount<=0.009)add("Delete" to {scope.launch{when(val x=api.deletePurchaseRecon(r.id?:0)){is ApiResult.Success->{selected=null;refresh++;msg="Purchase Recon deleted"};else->msg=x.readableMessage()}}})
         },{selected=null})
     }
-    attachmentRecord?.let{r->PremiumAlertDialog(onDismissRequest={attachmentRecord=null},title={Text("Attachments • ${r.reference}")},text={Column(Modifier.heightIn(max=520.dp)){AttachmentManager(api,"PURCHASE_RECON",r.id?:0,p.can("PURCHASE_RECON","EDIT"),refresh){msg=it}}},confirmButton={TextButton(onClick={attachmentRecord=null;refresh++}){Text("Close")}})}
+    attachmentRecord?.let{r->PremiumAlertDialog(onDismissRequest={attachmentRecord=null},title={Text("Attachments • ${r.reference}")},text={Column(Modifier.heightIn(max=520.dp)){AttachmentManager(api,"PURCHASE_RECON",r.id?:0,p.can("PURCHASE_RECON","EDIT"),r.rowVersion,refresh){msg=it}}},confirmButton={TextButton(onClick={attachmentRecord=null;refresh++}){Text("Close")}})}
     bankLinksRecord?.let{r->PurchaseReconBankLinksDialog(r,{bankLinksRecord=null}){target->bankLinksRecord=null;onRecordTarget(target)}}
     if(creating)PurchaseReconEditor(api,null,p,{creating=false}){req->scope.launch{when(val r=api.savePurchaseRecon(req)){is ApiResult.Success->{creating=false;selected=r.value;refresh++;msg="Purchase Recon ${r.value.reference} created"};else->msg=r.readableMessage()}}}
     editing?.let{old->PurchaseReconEditor(api,old,p,{editing=null}){req->scope.launch{when(val r=api.updatePurchaseRecon(old.id?:0,req)){is ApiResult.Success->{editing=null;selected=r.value;refresh++;msg="Purchase Recon updated"};else->msg=r.readableMessage()}}}}
@@ -690,51 +690,49 @@ private enum class MasterMode(val label:String){CUSTOMERS("Customers"),SUPPLIERS
 
 
 @Composable private fun ReportsWorkspace(api:DseErpHttpClient){
-    var from by remember{mutableStateOf(addDaysIso(todayIso(),-30))}
-    var to by remember{mutableStateOf(todayIso())}
-    var type by remember{mutableStateOf("All Reports")}
-    var party by remember{mutableStateOf("")}
-    var item by remember{mutableStateOf("")}
-    var salesperson by remember{mutableStateOf("")}
-    var filters by remember{mutableStateOf(ReportFilters())}
-    var data by remember{mutableStateOf<ReportBundle?>(null)}
-    var msg by remember{mutableStateOf("Choose filters and run report")}
-    var busy by remember{mutableStateOf(false)}
+    var from by remember{mutableStateOf(addDaysIso(todayIso(),-30))};var to by remember{mutableStateOf(todayIso())};var type by remember{mutableStateOf("All Reports")};var party by remember{mutableStateOf("")};var item by remember{mutableStateOf("")};var salesperson by remember{mutableStateOf("")}
+    var filters by remember{mutableStateOf(ReportFilters())};var data by remember{mutableStateOf<ReportBundle?>(null)};var msg by remember{mutableStateOf("Choose filters and run report")};var busy by remember{mutableStateOf(false)}
+    var definitions by remember{mutableStateOf<List<UnifiedReportDefinition>>(emptyList())};var advancedId by remember{mutableStateOf("")};var advanced by remember{mutableStateOf<UnifiedReportResult?>(null)};var advancedFilters by remember{mutableStateOf(UnifiedReportFilters())}
+    var schedules by remember{mutableStateOf(ReportSchedulePage())};var savedOptions by remember{mutableStateOf<List<SavedReportOption>>(emptyList())};var scheduleRefresh by remember{mutableIntStateOf(0)};var createSchedule by remember{mutableStateOf(false)};var editSchedule by remember{mutableStateOf<ReportScheduleRow?>(null)};var historySchedule by remember{mutableStateOf<Pair<ReportScheduleRow,List<ReportRunHistory>>?>(null)}
     val scope=rememberCoroutineScope()
-    LaunchedEffect(Unit){(api.reportFilters() as? ApiResult.Success)?.value?.let{filters=it}}
+    LaunchedEffect(scheduleRefresh){
+        (api.reportFilters() as? ApiResult.Success)?.value?.let{filters=it}
+        (api.unifiedReportDefinitions() as? ApiResult.Success)?.value?.let{definitions=it;if(advancedId.isBlank())advancedId=it.firstOrNull()?.id.orEmpty()}
+        (api.unifiedReportFilters() as? ApiResult.Success)?.value?.let{advancedFilters=it}
+        (api.reportSchedules() as? ApiResult.Success)?.value?.let{schedules=it}
+        (api.savedReportOptions() as? ApiResult.Success)?.value?.let{savedOptions=it}
+    }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).verticalScroll(rememberScrollState()).padding(14.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
         PremiumCard(Modifier.fillMaxWidth(),padding=15.dp){
-            Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){
-                PremiumIconTile(Icons.Rounded.Assessment,DsePurple,size=46.dp)
-                Column(Modifier.weight(1f)){Text("Reports & Insights",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.ExtraBold);Text("Live business intelligence from your UAT workspace",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
-            }
+            Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){PremiumIconTile(Icons.Rounded.Assessment,DsePurple,size=46.dp);Column(Modifier.weight(1f)){Text("Reports & Insights",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.ExtraBold);Text("Live business intelligence from the ERP server",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
             DseSelect("Report Type",type,listOf("All Reports","Sales","Purchase","Profit","Receivables","Payables","Inventory","Customers","Items"),onValue={type=it})
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){DseDateField("From",from,Modifier.weight(1f),onValue={from=it});DseDateField("To",to,Modifier.weight(1f),onValue={to=it})}
-            DseSelect("Party",party,listOf("")+filters.parties,onValue={party=it})
-            DseSelect("Item",item,listOf("")+filters.items,onValue={item=it})
-            DseSelect("Salesperson",salesperson,listOf("")+filters.salespeople,onValue={salesperson=it})
-            PremiumPrimaryButton(
-                text=if(busy)"Loading insights…" else "Run Report",
-                onClick={scope.launch{busy=true;when(val r=api.reports(from,to,type,party,item,salesperson)){is ApiResult.Success->{data=r.value;msg="Report loaded"};else->msg=r.readableMessage()};busy=false}},
-                modifier=Modifier.fillMaxWidth(),
-                enabled=!busy,
-                leadingIcon=Icons.Rounded.AutoGraph,
-                trailingIcon=Icons.Rounded.ArrowForward,
-            )
+            DseSelect("Party",party,(listOf("")+filters.parties+advancedFilters.parties+advancedFilters.customers+advancedFilters.suppliers).distinct(),onValue={party=it});DseSelect("Item",item,(listOf("")+filters.items+advancedFilters.items).distinct(),onValue={item=it});DseSelect("Salesperson",salesperson,(listOf("")+filters.salespeople+advancedFilters.salespeople).distinct(),onValue={salesperson=it})
+            PremiumPrimaryButton(text=if(busy)"Loading insights…" else "Run Report",onClick={scope.launch{busy=true;when(val r=api.reports(from,to,type,party,item,salesperson)){is ApiResult.Success->{data=r.value;msg="Report loaded"};else->msg=r.readableMessage()};busy=false}},modifier=Modifier.fillMaxWidth(),enabled=!busy,leadingIcon=Icons.Rounded.AutoGraph,trailingIcon=Icons.Rounded.ArrowForward)
         }
-        data?.let{r->
-            DseHeroKpi("Profit",money(r.profit),"$type • $from to $to",Icons.Rounded.TrendingUp)
-            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){DseMetricTile("Sales",compactMoney(r.sales),Icons.Rounded.ReceiptLong,Modifier.weight(1f),DsePurple);DseMetricTile("Purchases",compactMoney(r.purchase),Icons.Rounded.ShoppingCart,Modifier.weight(1f),DseWarning)}
-            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){DseMetricTile("Receivables",compactMoney(r.receivables),Icons.Rounded.CreditCard,Modifier.weight(1f),DseDanger);DseMetricTile("Payables",compactMoney(r.payables),Icons.Rounded.AccountBalanceWallet,Modifier.weight(1f),DseInfo)}
-            DseSection("Recent Sales",Icons.Rounded.ReceiptLong){r.salesRows.take(20).forEach{x->DseRecordCard(x.number,"${x.date} • ${x.party}",money(x.amount),listOf("Status" to x.status)){}}}
-            DseSection("Recent Purchases",Icons.Rounded.ShoppingCart){r.purchaseRows.take(20).forEach{x->DseRecordCard(x.number,"${x.date} • ${x.party}",money(x.amount),listOf("Status" to x.status)){}}}
-            DseSection("Top Customers",Icons.Rounded.Groups){r.customerPoints.take(10).forEach{x->Row(Modifier.fillMaxWidth().padding(vertical=4.dp),horizontalArrangement=Arrangement.SpaceBetween){Text(x.label,Modifier.weight(1f));Text(money(x.value),fontWeight=FontWeight.Bold)}}}
-            DseSection("Top Items",Icons.Rounded.Inventory2){r.itemPoints.take(10).forEach{x->Row(Modifier.fillMaxWidth().padding(vertical=4.dp),horizontalArrangement=Arrangement.SpaceBetween){Text(x.label,Modifier.weight(1f));Text(money(x.value),fontWeight=FontWeight.Bold)}}}
-            PremiumSecondaryButton("Share / Print Report",{platformShareText("${businessName()} Report",reportShareText(from,to,type,r))},Modifier.fillMaxWidth(),icon=Icons.Rounded.Share)
+        data?.let{r->DseHeroKpi("Profit",money(r.profit),"$type • $from to $to",Icons.Rounded.TrendingUp);Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){DseMetricTile("Sales",compactMoney(r.sales),Icons.Rounded.ReceiptLong,Modifier.weight(1f),DsePurple);DseMetricTile("Purchases",compactMoney(r.purchase),Icons.Rounded.ShoppingCart,Modifier.weight(1f),DseWarning)};DseSection("Recent Sales",Icons.Rounded.ReceiptLong){r.salesRows.take(20).forEach{x->DseRecordCard(x.number,"${x.date} • ${x.party}",money(x.amount),listOf("Status" to x.status)){}}};PremiumSecondaryButton("Share / Print Report",{platformShareText("${businessName()} Report",reportShareText(from,to,type,r))},Modifier.fillMaxWidth(),icon=Icons.Rounded.Share)}
+        if(definitions.isNotEmpty())DseSection("Advanced Reports",Icons.Rounded.QueryStats){
+            DseSelect("Definition",advancedId,definitions.map{it.id},onValue={advancedId=it})
+            PremiumSecondaryButton("Run Advanced Report",{scope.launch{busy=true;when(val r=api.runUnifiedReport(UnifiedReportRequest(reportId=advancedId,from=from,to=to,party=party,item=item,salesperson=salesperson))){is ApiResult.Success->{advanced=r.value;msg="${r.value.title} loaded"};else->msg=r.readableMessage()};busy=false}},Modifier.fillMaxWidth(),enabled=!busy&&advancedId.isNotBlank(),icon=Icons.Rounded.Analytics)
+            advanced?.let{r->Text("${r.title} • ${r.totalRows} row(s)",fontWeight=FontWeight.Bold);r.metrics.take(6).forEach{m->detailRows(listOf(m.label to m.value.toString()))};r.rows.take(10).forEach{row->Text(row.values.joinToString(" • "),style=MaterialTheme.typography.bodySmall)}}
         }
-        DseMessageFeedback(msg)
-        Spacer(Modifier.height(10.dp))
+        DseSection("Scheduled Reports",Icons.Rounded.Schedule){
+            detailRows(listOf("Active" to schedules.summary.activeSchedules.toString(),"Next" to schedules.summary.nextSchedule.ifBlank{"—"},"Reports this month" to schedules.summary.reportsThisMonth.toString(),"Failures (30d)" to schedules.summary.failuresLast30Days.toString()))
+            PremiumSecondaryButton("New Schedule",{createSchedule=true},Modifier.fillMaxWidth(),enabled=savedOptions.isNotEmpty(),icon=Icons.Rounded.Add)
+            if(savedOptions.isEmpty())Text("No saved report definitions are available for scheduling.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            schedules.schedules.forEach{row->PremiumCard(Modifier.fillMaxWidth(),padding=10.dp){Text(row.name,fontWeight=FontWeight.Bold);Text("${row.reportTitle} • ${row.frequency} • ${row.status}",style=MaterialTheme.typography.bodySmall);Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)){TextButton(onClick={scope.launch{when(val r=api.runReportSchedule(row.id)){is ApiResult.Success->msg=r.value.message;else->msg=r.readableMessage()};scheduleRefresh++}}){Text("Run")};TextButton(onClick={editSchedule=row}){Text("Edit")};TextButton(onClick={scope.launch{when(val r=api.reportScheduleHistory(row.id)){is ApiResult.Success->historySchedule=row to r.value;else->msg=r.readableMessage()}}}){Text("History")};TextButton(onClick={scope.launch{val r=if(row.status.equals("PAUSED",true))api.resumeReportSchedule(row.id,row.rowVersion) else api.pauseReportSchedule(row.id,row.rowVersion);msg=if(r is ApiResult.Success)r.value.message else r.readableMessage();scheduleRefresh++}}){Text(if(row.status.equals("PAUSED",true))"Resume" else "Pause")};TextButton(onClick={scope.launch{when(val r=api.duplicateReportSchedule(row.id)){is ApiResult.Success->msg="Schedule duplicated";else->msg=r.readableMessage()};scheduleRefresh++}}){Text("Duplicate")};TextButton(onClick={scope.launch{when(val r=api.deleteReportSchedule(row.id,row.rowVersion)){is ApiResult.Success->msg=r.value.message;else->msg=r.readableMessage()};scheduleRefresh++}}){Text("Delete")}}}}
+        }
+        DseMessageFeedback(msg);Spacer(Modifier.height(10.dp))
     }
+    if(createSchedule)ReportScheduleEditDialog(api,savedOptions,null,{createSchedule=false}){msg=it;createSchedule=false;scheduleRefresh++}
+    editSchedule?.let{row->ReportScheduleEditDialog(api,savedOptions,row,{editSchedule=null}){msg=it;editSchedule=null;scheduleRefresh++}}
+    historySchedule?.let{(row,history)->PremiumAlertDialog(onDismissRequest={historySchedule=null},title={Text("${row.name} History")},text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){if(history.isEmpty())Text("No runs recorded.",style=MaterialTheme.typography.bodySmall) else history.take(50).forEach{h->PremiumCard(Modifier.fillMaxWidth(),padding=8.dp){Text("${h.status} • ${h.startedAt}",fontWeight=FontWeight.SemiBold);Text("${h.format} • ${h.delivery} • ${h.rowCount} row(s)",style=MaterialTheme.typography.bodySmall);if(h.error.isNotBlank())Text(h.error,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)}}}},confirmButton={TextButton(onClick={historySchedule=null}){Text("Close")}})}
+}
+
+@Composable private fun ReportScheduleEditDialog(api:DseErpHttpClient,options:List<SavedReportOption>,current:ReportScheduleRow?,onClose:()->Unit,onDone:(String)->Unit){
+    var saved by remember(current?.id,options){mutableStateOf(current?.savedReport?:options.firstOrNull()?.name.orEmpty())};var name by remember(current?.id,options){mutableStateOf(current?.name?:options.firstOrNull()?.title.orEmpty())};var frequency by remember(current?.id){mutableStateOf(current?.frequency?.ifBlank{"DAILY"}?:"DAILY")};var time by remember(current?.id){mutableStateOf(current?.time?.ifBlank{"08:00"}?:"08:00")};var format by remember(current?.id){mutableStateOf(current?.format?.ifBlank{"PDF"}?:"PDF")};var delivery by remember(current?.id){mutableStateOf(current?.delivery?.ifBlank{"EMAIL"}?:"EMAIL")};var recipients by remember(current?.id){mutableStateOf(current?.recipients.orEmpty())};var msg by remember{mutableStateOf("")};val scope=rememberCoroutineScope()
+    val editing=current!=null
+    PremiumAlertDialog(onDismissRequest=onClose,title={Text(if(editing)"Edit Report Schedule" else "New Report Schedule")},text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){DseField("Name",name,required=true,onValue={name=it});DseSelect("Saved Report",saved,options.map{it.name}.ifEmpty{listOf(saved)},required=true,onValue={saved=it});DseSelect("Frequency",frequency,listOf("DAILY","WEEKLY","MONTHLY","YEARLY"),onValue={frequency=it});DseField("Time (HH:mm)",time,singleLine=true,required=true,onValue={time=it});DseSelect("Format",format,listOf("PDF","XLSX","CSV"),onValue={format=it});DseSelect("Delivery",delivery,listOf("EMAIL","DOWNLOAD"),onValue={delivery=it});DseField("Recipients",recipients,onValue={recipients=it});DseMessageFeedback(msg)}},confirmButton={PremiumPrimaryButton(if(editing)"Save" else "Create",{scope.launch{val request=ReportScheduleRequest(name=name,savedReport=saved,frequency=frequency,time=time,format=format,delivery=delivery,recipients=recipients,rowVersion=current?.rowVersion?:0);val r=if(current==null)api.createReportSchedule(request) else api.updateReportSchedule(current.id,request);when(r){is ApiResult.Success->onDone(if(editing)"Schedule ${r.value.name} updated" else "Schedule ${r.value.name} created");else->msg=r.readableMessage()}}},enabled=name.isNotBlank()&&saved.isNotBlank()&&time.isNotBlank(),leadingIcon=if(editing)Icons.Rounded.Save else Icons.Rounded.Schedule)},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})
 }
 
 private fun reportShareText(from:String,to:String,type:String,r:ReportBundle)=buildString{appendLine("${businessName()} • $type");appendLine("Period: $from to $to");appendLine("Sales: ${money(r.sales)}");appendLine("Purchases: ${money(r.purchase)}");appendLine("Profit: ${money(r.profit)}");appendLine("Receivables: ${money(r.receivables)}");appendLine("Payables: ${money(r.payables)}");if(r.customerPoints.isNotEmpty()){appendLine("Top Customers:");r.customerPoints.take(10).forEach{appendLine("- ${it.label}: ${money(it.value)}")}};if(r.itemPoints.isNotEmpty()){appendLine("Top Items:");r.itemPoints.take(10).forEach{appendLine("- ${it.label}: ${money(it.value)}")}}}
@@ -811,7 +809,7 @@ private fun reportShareText(from:String,to:String,type:String,r:ReportBundle)=bu
     if(edit)profile?.let{u->ProfileEditDialog(u,{edit=false}){req->scope.launch{when(val r=api.updateProfile(req)){is ApiResult.Success->{profile=r.value;edit=false;msg="Profile updated"};else->msg=r.readableMessage()}}}}
     if(password)profile?.let{u->ChangePasswordDialog(u.id,{password=false}){req->scope.launch{when(val r=api.changePassword(req)){is ApiResult.Success->{password=false;msg="Password changed successfully"};else->msg=r.readableMessage()}}}}
 }
-@Composable private fun ProfileEditDialog(u:UserProfile,onClose:()->Unit,onSave:(ProfileUpdate)->Unit){var full by remember{mutableStateOf(u.fullName.orEmpty())};var email by remember{mutableStateOf(u.email.orEmpty())};var dept by remember{mutableStateOf(u.department.orEmpty())};var branch by remember{mutableStateOf(u.branch.orEmpty())};PremiumAlertDialog(onDismissRequest=onClose,title={Text("Edit Profile")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){DseField("Full Name",full,required=true,onValue={full=it});DseField("Email",email,onValue={email=it});DseField("Department",dept,onValue={dept=it});DseField("Branch",branch,onValue={branch=it})}},confirmButton={PremiumPrimaryButton("Save Profile",{onSave(ProfileUpdate(full,email,dept,branch))},enabled=full.isNotBlank(),leadingIcon=Icons.Rounded.Save)},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})}
+@Composable private fun ProfileEditDialog(u:UserProfile,onClose:()->Unit,onSave:(ProfileUpdate)->Unit){var full by remember{mutableStateOf(u.fullName.orEmpty())};var email by remember{mutableStateOf(u.email.orEmpty())};var dept by remember{mutableStateOf(u.department.orEmpty())};var branch by remember{mutableStateOf(u.branch.orEmpty())};PremiumAlertDialog(onDismissRequest=onClose,title={Text("Edit Profile")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){DseField("Full Name",full,required=true,onValue={full=it});DseField("Email",email,onValue={email=it});DseField("Department",dept,onValue={dept=it});DseField("Branch",branch,onValue={branch=it})}},confirmButton={PremiumPrimaryButton("Save Profile",{onSave(ProfileUpdate(full,email,dept,branch,u.rowVersion))},enabled=full.isNotBlank(),leadingIcon=Icons.Rounded.Save)},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})}
 @Composable private fun ChangePasswordDialog(userId:Int,onClose:()->Unit,onSave:(ChangePasswordRequest)->Unit){var old by remember{mutableStateOf("")};var new by remember{mutableStateOf("")};var confirm by remember{mutableStateOf("")};PremiumAlertDialog(onDismissRequest=onClose,title={Text("Change Password")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){DsePasswordField("Current Password",old,required=true,onValue={old=it});DsePasswordField("New Password",new,required=true,onValue={new=it});DsePasswordField("Confirm Password",confirm,required=true,onValue={confirm=it});if(new.isNotBlank()&&new!=confirm)Text("Passwords do not match",color=MaterialTheme.colorScheme.error)}},confirmButton={PremiumPrimaryButton("Change Password",{onSave(ChangePasswordRequest(userId,old,new))},enabled=old.isNotBlank()&&new.length>=8&&new==confirm,leadingIcon=Icons.Rounded.Lock)},dismissButton={TextButton(onClick=onClose){Text("Cancel")}})}
 
 @Composable private fun AdminWorkspace(api:DseErpHttpClient,p:PermissionContext){
@@ -873,6 +871,8 @@ private fun reportShareText(from:String,to:String,type:String,r:ReportBundle)=bu
                 add("Edit" to {editing=u;selected=null})
                 add((if(u.locked)"Unlock" else "Lock") to {scope.launch{when(val r=api.setAdminUserLocked(u.id,!u.locked)){is ApiResult.Success->{msg=r.value.message;selected=null;refresh++};else->msg=r.readableMessage()}}})
                 add("Reset Password" to {reset=u;selected=null})
+                add("Authenticator Status" to {scope.launch{when(val r=api.adminMfaState(u.id)){is ApiResult.Success->msg="${u.username} MFA: ${r.value.status} • ${r.value.message}";else->msg=r.readableMessage()};selected=null}})
+                if(u.mfaEnabled)add("Reset Authenticator" to {scope.launch{when(val r=api.resetAdminMfa(u.id)){is ApiResult.Success->{msg=r.value.message;selected=null;refresh++};else->msg=r.readableMessage()}}})
             }
             if(p.isAdmin()||p.can("USERS","DELETE"))add("Delete" to {scope.launch{when(val r=api.deleteAdminUser(u.id)){is ApiResult.Success->{msg=r.value.message;selected=null;refresh++};else->msg=r.readableMessage()}}})
         }
@@ -933,7 +933,7 @@ private fun reportShareText(from:String,to:String,type:String,r:ReportBundle)=bu
     val shown=rows.filter{(!grantedOnly||it.allowed)&&(q.isBlank()||it.module.contains(q,true)||it.action.contains(q,true)||it.description.contains(q,true))}
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
         PremiumCard(Modifier.fillMaxWidth(),padding=12.dp){
-            Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(9.dp)){PremiumIconTile(Icons.Rounded.Security,MaterialTheme.colorScheme.primary,size=40.dp);Column(Modifier.weight(1f)){Text("Role Permissions",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.ExtraBold);Text("Server-owned 10.0.16 permission matrix",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
+            Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(9.dp)){PremiumIconTile(Icons.Rounded.Security,MaterialTheme.colorScheme.primary,size=40.dp);Column(Modifier.weight(1f)){Text("Role Permissions",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.ExtraBold);Text("Server-owned 10.0.26 permission matrix",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
             DseSelect("Role",role,roles.map{it.code},required=true,onValue={role=it})
             DseField("Search module / action",q,singleLine=true,onValue={q=it})
             Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Checkbox(grantedOnly,{grantedOnly=it});Text("Show granted only",Modifier.weight(1f));Text("${rows.count{it.allowed}}/${rows.size}",fontWeight=FontWeight.Bold)}
@@ -948,7 +948,7 @@ private fun reportShareText(from:String,to:String,type:String,r:ReportBundle)=bu
         }
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp)){PremiumSecondaryButton("Effective Access",{preview=true},Modifier.weight(1f),icon=Icons.Rounded.Visibility);if(canSave)PremiumPrimaryButton("Save Permissions",{scope.launch{when(val r=api.saveAdminPermissions(AdminPermissionSaveRequest(role,rows.map{AdminPermissionSave(it.id,it.allowed)},rowVersion))){is ApiResult.Success->{msg="Permissions saved";refresh++};else->msg=r.readableMessage()}}},Modifier.weight(1f),enabled=role.isNotBlank(),leadingIcon=Icons.Rounded.Save)}
         }
-        Column(Modifier.fillMaxWidth().heightIn(max=420.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(6.dp)){
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(6.dp)){
             shown.groupBy{it.module}.forEach{(module,permissions)->PremiumCard(Modifier.fillMaxWidth(),padding=9.dp){Text(module.replace('_',' ').lowercase().replaceFirstChar{it.uppercase()},fontWeight=FontWeight.ExtraBold);permissions.forEach{r->val index=rows.indexOfFirst{it.id==r.id};Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Checkbox(r.allowed,{checked->if(canSave&&index>=0)rows=rows.toMutableList().also{it[index]=r.copy(allowed=checked)}},enabled=canSave);Column(Modifier.weight(1f)){Text(r.action.replace('_',' ').lowercase().replaceFirstChar{it.uppercase()},fontWeight=FontWeight.SemiBold);if(r.description.isNotBlank())Text(r.description,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}}}
         }
     }
@@ -956,11 +956,15 @@ private fun reportShareText(from:String,to:String,type:String,r:ReportBundle)=bu
 }
 
 private fun mobileTemplateAllows(template:String,module:String,action:String):Boolean{
-    val m=module.trim().uppercase();val a=action.trim().uppercase();val administration=setOf("USERS","SETTINGS","BACKUP","APPLICATION_UPDATES","SAFE_ROLLBACK");val sales=setOf("DASHBOARD","SALES","QUOTATION","CUSTOMERS","COMMUNICATION","REMINDERS","REPORTS","INVENTORY")
+    val m=module.trim().uppercase();val a=action.trim().uppercase()
+    val mobileModules=setOf("DASHBOARD","SALES","PURCHASE","QUOTATION","CUSTOMERS","SUPPLIERS","INVENTORY","MASTERS","SALES_RETURN","PURCHASE_RETURN","BANK_EXPENSE","PURCHASE_RECON","COMMUNICATION","REMINDERS","REPORTS","USERS","SETTINGS","APPLICATION_UPDATES","IMPORT","NOTIFICATIONS","PROFILE")
+    if(m !in mobileModules)return false
+    val administration=setOf("USERS","SETTINGS","APPLICATION_UPDATES")
+    val sales=setOf("DASHBOARD","SALES","QUOTATION","CUSTOMERS","COMMUNICATION","REMINDERS","REPORTS","INVENTORY")
     return when(template){
         "Read Only"->m !in administration&&a=="VIEW"
         "Sales Standard"->when{m !in sales->false;m in setOf("DASHBOARD","REPORTS","INVENTORY")->a in setOf("VIEW","EXPORT");m=="REMINDERS"->a in setOf("VIEW","CREATE","EDIT","COMPLETE","SNOOZE");m=="COMMUNICATION"->a in setOf("VIEW","CREATE","EDIT","RESEND");else->a in setOf("VIEW","CREATE","EDIT","EXPORT")}
-        "Manager Standard"->when{m in administration->false;m=="DOCUMENT_STUDIO"->a in setOf("VIEW","CREATE","EDIT","EXPORT_PDF","MANAGE_TEMPLATES");m=="BANK_EXPENSE"->a in setOf("VIEW","CREATE","EDIT","EXPORT","RECONCILE","APPROVE");else->a!="DELETE"||m in setOf("SALES","PURCHASE","QUOTATION","CUSTOMERS","SUPPLIERS","INVENTORY","MASTERS")}
+        "Manager Standard"->when{m in administration->false;m=="BANK_EXPENSE"->a in setOf("VIEW","CREATE","EDIT","EXPORT","RECONCILE","APPROVE");else->a!="DELETE"||m in setOf("SALES","PURCHASE","QUOTATION","CUSTOMERS","SUPPLIERS","INVENTORY","MASTERS")}
         "Business Full Access"->m !in administration
         else->false
     }
@@ -983,6 +987,6 @@ private fun mobileTemplateAllows(template:String,module:String,action:String):Bo
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){DseMetricTile("Mobile",MobileBuildInfo.MOBILE_VERSION,Icons.Rounded.PhoneAndroid,Modifier.weight(1f),DseViolet);DseMetricTile("Server",MobileBuildInfo.SERVER_BASELINE,Icons.Rounded.CloudDone,Modifier.weight(1f),DseSuccess)}
         DseSection("Compatibility",Icons.Rounded.Verified){Text("API contract ${MobileBuildInfo.API_CONTRACT_VERSION}");Text("Business authority remains on the ${businessName()} server. Mobile lifecycle, numbering, validation, permissions and resulting ERP state stay server-owned.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
         DseSection(platformDeviceClassLabel(),if(platformName()=="Android") Icons.Rounded.PhoneAndroid else Icons.Rounded.PhoneAndroid){Text(platformSecurityLabel());Text(platformImportCapability());Text(platformPushCapability());Text(platformSystemExperienceCapability())}
-        DseSection("Secure architecture",Icons.Rounded.Security){Text("Server backup/restore, safe rollback and template-studio authoring remain excluded protected desktop/server administration operations. Android update status and secure mobile update delivery remain available in the app.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Text("Mobile consumes approved ERP data and documents without duplicating destructive server-maintenance tools.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+        DseSection("Secure architecture",Icons.Rounded.Security){Text("Destructive server-maintenance and template-authoring tools are intentionally not implemented in mobile. Android update status and secure mobile update delivery remain available in the app.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Text("Mobile consumes approved ERP data and documents while business rules and protected administration remain server-owned.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
     }
 }

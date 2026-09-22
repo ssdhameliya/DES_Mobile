@@ -118,7 +118,7 @@ actual suspend fun platformRequestPushNotifications(): PushPermissionResult = su
     }
 }
 actual fun platformPushCapability(): String =
-    "Android notification permission is available. Remote ERP delivery requires a registered Android device token on the 10.0.16 server."
+    "Android notification permission is available. Remote ERP delivery requires a registered Android device token on the 10.0.26 server."
 actual fun platformPickAttachment(onResult:(PickedAttachment)->Unit) {
     AndroidNativeHandlers.pickAttachment { name, base64, error ->
         onResult(PickedAttachment(name, base64, error))

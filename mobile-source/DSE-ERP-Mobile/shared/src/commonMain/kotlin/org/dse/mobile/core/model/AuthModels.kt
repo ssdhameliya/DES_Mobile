@@ -14,6 +14,9 @@ data class MfaCompleteRequest(
     val otp: String,
 )
 
+@Serializable data class MfaEnrollmentRequest(val challengeId:String="")
+@Serializable data class MfaEnrollmentResponse(val success:Boolean=false,val challengeId:String="",val manualSecret:String="",val provisioningUri:String="",val message:String="")
+
 
 @Serializable
 data class MfaResendRequest(val challengeId: String)
@@ -124,4 +127,5 @@ data class UserProfile(
     val locked: Boolean = false,
     val mfaEnabled: Boolean = false,
     val lastLogin: String? = null,
+    val rowVersion: Long = 0,
 )
