@@ -167,6 +167,15 @@ data class PermissionContext(val user:UserPayload?,val permissions:List<Effectiv
        else->{val text=r.readableMessage();message=text;dialogs.error(text);null}
       }
      },
+     onEnrollment={
+      val a=api
+      if(a==null){
+       val text="Authentication session is unavailable";message=text;dialogs.error(text);null
+      }else when(val r=a.mfaEnrollment(challenge)){
+       is ApiResult.Success->r.value
+       else->{val text=r.readableMessage();message=text;dialogs.error(text);null}
+      }
+     },
      onVerify={otp->
       val a=api
       if(a==null){
@@ -463,22 +472,28 @@ private fun friendlyLoginMessage(message:String):String{
 
 
 
-@Composable private fun MfaScreen(destination:String,message:String,onBack:()->Unit,onMessage:(String)->Unit,onChallenge:(String,String)->Unit,onResend:suspend()->Pair<String,String>?,onVerify:suspend(String)->Unit){
- var otp by remember{mutableStateOf("")};var busy by remember{mutableStateOf(false)};val scope=rememberCoroutineScope()
+@Composable private fun MfaScreen(destination:String,message:String,onBack:()->Unit,onMessage:(String)->Unit,onChallenge:(String,String)->Unit,onResend:suspend()->Pair<String,String>?,onEnrollment:suspend()->MfaEnrollmentResponse?,onVerify:suspend(String)->Unit){
+ var otp by remember{mutableStateOf("")};var busy by remember{mutableStateOf(false)};var setup by remember{mutableStateOf<MfaEnrollmentResponse?>(null)};val scope=rememberCoroutineScope()
+ val enrollmentMode=destination.contains("enrollment",true)||message.contains("set up",true)||message.contains("authenticator enrollment",true)
+ LaunchedEffect(enrollmentMode){if(enrollmentMode&&setup==null){busy=true;setup=onEnrollment();busy=false}}
  PremiumBackdrop{
   Box(Modifier.fillMaxSize().padding(18.dp),contentAlignment=Alignment.Center){
    PremiumCard(Modifier.widthIn(max=440.dp).fillMaxWidth(),padding=22.dp){
     Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(11.dp)){
      PremiumIconTile(Icons.Rounded.VerifiedUser,MaterialTheme.colorScheme.primary,size=46.dp)
-     Column{Text("Verify it’s you",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.ExtraBold);Text("Multi-factor authentication",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+     Column{Text(if(enrollmentMode)"Set up Authenticator" else "Verify it’s you",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.ExtraBold);Text("Multi-factor authentication",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
     }
-    Text(if(destination.isBlank())"Enter the verification code to continue." else "We sent a verification code to $destination",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
-    DseField("Verification code",otp,singleLine=true,required=true,onValue={otp=it})
+    if(enrollmentMode){
+     Text(setup?.message?.ifBlank{"Add this account to Google Authenticator or Microsoft Authenticator, then enter the current 6-digit code."}?:"Loading authenticator setup…",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+     setup?.manualSecret?.takeIf{it.isNotBlank()}?.let{secret->DseSection("Manual Setup Key",Icons.Rounded.Security){Text(secret,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold);PremiumSecondaryButton("Share Setup Key",{platformShareText("Jasvi Industries Authenticator Setup",secret)},Modifier.fillMaxWidth(),icon=Icons.Rounded.Share)}}
+     setup?.provisioningUri?.takeIf{it.isNotBlank()}?.let{uri->Text("Provisioning URI received securely. Use the manual key above when enrolling on this phone.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+    }else Text(if(destination.isBlank())"Enter the current authenticator code to continue." else "Verification source: $destination",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    DseField("Authenticator code",otp,singleLine=true,required=true,onValue={otp=it})
     Button(enabled=!busy&&otp.isNotBlank(),onClick={scope.launch{busy=true;onVerify(otp);busy=false}},modifier=Modifier.fillMaxWidth().height(54.dp),shape=androidx.compose.foundation.shape.RoundedCornerShape(18.dp)){
      if(busy)CircularProgressIndicator(Modifier.size(18.dp),color=MaterialTheme.colorScheme.onPrimary,strokeWidth=2.dp) else Icon(Icons.Rounded.LockOpen,null)
      Spacer(Modifier.width(8.dp));Text("Verify & Continue")
     }
-    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){TextButton(enabled=!busy,onClick=onBack){Text("Back")};TextButton(enabled=!busy,onClick={scope.launch{busy=true;val update=onResend();if(update!=null)onChallenge(update.first,update.second);busy=false}}){Text("Resend code")}}
+    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){TextButton(enabled=!busy,onClick=onBack){Text("Back")};if(!enrollmentMode)TextButton(enabled=!busy,onClick={scope.launch{busy=true;val update=onResend();if(update!=null)onChallenge(update.first,update.second);busy=false}}){Text("Refresh code")}}
     DseMessageFeedback(message,modifier=Modifier.fillMaxWidth())
    }
   }
@@ -491,7 +506,7 @@ private fun friendlyLoginMessage(message:String):String{
  PremiumAlertDialog(onDismissRequest=onClose,title={Text("Reset Password")},text={Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
   if(challenge.isBlank()){
    DseField("Username / email",identity,singleLine=true,required=true,onValue={identity=it})
-   Text("Jasvi Industries 10.0.16 sends a verification code to the registered email.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+   Text("Jasvi Industries 10.0.26 sends a verification code to the registered email.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
   } else {
    DseField("Email Verification Code",otp,singleLine=true,required=true,onValue={otp=it})
    DseField("Authenticator Code",totp,singleLine=true,supporting="Required when MFA is enrolled for this account",onValue={totp=it})
@@ -539,7 +554,7 @@ private fun friendlyLoginMessage(message:String):String{
      DseField("Answer",captchaAnswer,singleLine=true,required=true,icon=Icons.Rounded.VerifiedUser,onValue={captchaAnswer=it})
      TextButton(enabled=!busy,onClick={scope.launch{refreshCaptcha()}}){Icon(Icons.Rounded.Refresh,null);Spacer(Modifier.width(6.dp));Text("Refresh CAPTCHA")}
     }}
-    Text("Jasvi Industries 10.0.16 requires email verification, authenticator enrollment and administrator approval before first sign-in.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    Text("Jasvi Industries 10.0.25 requires email verification, authenticator enrollment and administrator approval before first sign-in.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
    }
    2->{
     Text("Email verification",style=MaterialTheme.typography.titleMedium)

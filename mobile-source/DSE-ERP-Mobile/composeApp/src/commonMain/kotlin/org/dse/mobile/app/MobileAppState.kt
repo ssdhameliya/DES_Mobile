@@ -6,7 +6,7 @@ import androidx.compose.runtime.setValue
 import org.dse.mobile.core.api.ApiResult
 import org.dse.mobile.core.api.DseErpHttpClient
 
-/** Central mobile presentation state sourced from the same server settings as desktop 10.0.16. */
+/** Central mobile presentation state sourced from the same server settings as desktop 10.0.26. */
 internal object BusinessBrandingState {
     var companyName by mutableStateOf("Jasvi Industries")
         private set

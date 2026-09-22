@@ -2,7 +2,7 @@ package org.dse.mobile.core.model
 
 import kotlinx.serialization.Serializable
 
-// Desktop/server 10.0.16 parity contracts. Business rules remain server-owned.
+// Desktop/server 10.0.26 parity contracts. Business rules remain server-owned.
 @Serializable data class AuditChangeRow(val id:Long=0,val fieldName:String="",val oldValue:String="",val newValue:String="")
 @Serializable data class AuditEventRow(
     val id:Long=0,val entityType:String="",val entityId:Long=0,val referenceNo:String="",val action:String="",val category:String="",

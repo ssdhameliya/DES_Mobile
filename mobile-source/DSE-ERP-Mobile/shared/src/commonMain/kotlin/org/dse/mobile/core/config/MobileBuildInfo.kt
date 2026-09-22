@@ -6,18 +6,18 @@ data class MobileRuntimeConfig(
     val blockedServerHost: String,
     val serverEditingAllowed: Boolean,
     val updateApkBaseUrl: String,
-    val installedVersionName: String = "1.2.13",
+    val installedVersionName: String = "1.2.24",
 )
 
 object MobileBuildInfo {
     const val APP_NAME = "Jasvi Industries Mobile"
-    private const val FALLBACK_MOBILE_VERSION_NAME = "1.2.13"
+    private const val FALLBACK_MOBILE_VERSION_NAME = "1.2.24"
     val MOBILE_VERSION_NAME: String get() = runtimeConfig.installedVersionName.trim().ifBlank { FALLBACK_MOBILE_VERSION_NAME }
-    val MOBILE_VERSION: String get() = "$MOBILE_VERSION_NAME-V10.0.16-ANDROID"
-    const val SERVER_BASELINE = "10.0.16"
-    // Desktop/server 10.0.16 is the Android parity authority; older certified servers remain allowed by the compatibility floor.
+    val MOBILE_VERSION: String get() = "$MOBILE_VERSION_NAME-V10.0.26-ANDROID"
+    const val SERVER_BASELINE = "10.0.26"
+    // Desktop/server 10.0.26 is the Android parity authority; older certified servers remain allowed by the compatibility floor.
     const val MINIMUM_COMPATIBLE_SERVER_VERSION = "10.0.1"
-    const val API_CONTRACT_VERSION = "server-10.0.16-compatible-v5"
+    const val API_CONTRACT_VERSION = "server-10.0.25-compatible-v5"
     const val MINIMUM_SUPPORTED_MOBILE_VERSION = "1.2.3"
     const val EXPECTED_SERVER_SERVICE = "dse-erp-server"
     const val EXPECTED_API_REVISION = "spring-security-bearer-v5"

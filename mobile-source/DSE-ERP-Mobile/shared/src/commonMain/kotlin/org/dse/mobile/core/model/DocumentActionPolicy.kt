@@ -3,7 +3,7 @@ package org.dse.mobile.core.model
 /**
  * Shared Mobile policy for canonical server-owned document output.
  *
- * Desktop/server 10.0.16 permits PDF, XLSX and business-email generation for
+ * Desktop/server 10.0.26 permits PDF, XLSX and business-email generation for
  * pending/rejected records. Approval state still governs financial actions
  * such as payments and returns, but it must not block document rendering.
  */

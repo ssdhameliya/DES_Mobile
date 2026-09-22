@@ -17,7 +17,7 @@ class MobileCompatibilityTest {
     ) = RuntimeHealthResponse(
         ready = true,
         service = "dse-erp-server",
-        version = "10.0.16",
+        version = "10.0.26",
         apiRevision = "spring-security-bearer-v5",
         minimumSupportedAndroidVersion = androidMin,
         latestAndroidVersion = androidLatest,

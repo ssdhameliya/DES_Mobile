@@ -1,7 +1,7 @@
 package org.dse.mobile.core.model
 
 /**
- * Mobile representation of the exact cross-screen linkage contract used by Desktop 10.0.16.
+ * Mobile representation of the exact cross-screen linkage contract used by Desktop 10.0.26.
  * The source context matters: Bank Statement intentionally opens Sale/Purchase payment flows,
  * while Bank & Expense opens the linked Sale/Purchase register record itself.
  */

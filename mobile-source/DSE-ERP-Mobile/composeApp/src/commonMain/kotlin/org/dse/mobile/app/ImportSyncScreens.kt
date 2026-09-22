@@ -254,9 +254,11 @@ private fun validateImport(s: ImportSheet, m: ImportModule): List<String> {
 private suspend fun executeImport(api:DseErpHttpClient,m:ImportModule,s:ImportSheet,user:String,dry:Boolean,bank:BankMeta,strategy:ImportStrategy):ImportExecutionSummary=when(m){ImportModule.ITEMS->importItems(api,s,dry,strategy);ImportModule.CUSTOMERS->importParties(api,s,"CUSTOMER",dry,strategy);ImportModule.SUPPLIERS->importParties(api,s,"SUPPLIER",dry,strategy);ImportModule.SALES->importDocs(api,s,true,dry);ImportModule.PURCHASES->importDocs(api,s,false,dry);ImportModule.MASTER->importLookups(api,s,dry,strategy);ImportModule.PURCHASE_RECON->importRecon(api,s,dry);ImportModule.BANK->importBank(api,s,user,dry,bank)}
 private suspend fun importItems(api:DseErpHttpClient,s:ImportSheet,dry:Boolean,strategy:ImportStrategy):ImportExecutionSummary{
  if(dry)return ImportExecutionSummary(s.rows.size,s.rows.size,0,listOf("Item validation passed • ${strategy.label}"));var ok=0;val messages=mutableListOf<String>()
+ val requestedCodes=s.rows.map{it.str("item_code")}.filter{it.isNotBlank()}.distinct()
+ val existingByCode=(api.itemsByCodes(requestedCodes) as? ApiResult.Success)?.value.orEmpty().associateBy{it.itemCode.uppercase()}
  for((i,r) in s.rows.withIndex()){
   val item=MasterItem(itemCode=r.str("item_code"),description=r.str("description"),category=r.opt("category"),brand=r.opt("brand"),material=r.opt("material"),size=r.opt("size"),unit=r.opt("unit"),hsn=r.opt("hsn"),gst=r.num("gst"),discountPercent=r.num("discount_percent"),purchasePrice=r.num("purchase_price"),sellingPrice=r.num("selling_price"),openingStock=r.num("opening_stock"),minimumStock=r.num("minimum_stock"),location=r.opt("location"),remarks=r.opt("remarks"),active=r.boolStrict("active",true))
-  val existing=(api.searchItems(item.itemCode,50) as? ApiResult.Success)?.value?.firstOrNull{it.itemCode.equals(item.itemCode,true)}
+  val existing=existingByCode[item.itemCode.uppercase()]
   if(existing!=null&&strategy==ImportStrategy.SKIP_EXISTING){ok++;messages+="${item.itemCode}: skipped existing";continue}
   val x=if(existing!=null&&strategy==ImportStrategy.UPDATE_EXISTING)api.updateItem(item.copy(id=existing.id,rowVersion=existing.rowVersion,reservedStock=existing.reservedStock))else if(existing!=null)ApiResult.ServerError(400,"Item ${item.itemCode} already exists")else api.createItem(item)
   when(x){is ApiResult.Success->{ok++;messages+="${item.itemCode}: ${if(existing!=null)"updated" else "created"}"};else->messages+="Row ${i+2}: ${x.readableMessage()}"}
@@ -281,6 +283,8 @@ private suspend fun importDocs(api: DseErpHttpClient, s: ImportSheet, sales: Boo
     if (dry) return ImportExecutionSummary(groups.size, groups.size, 0, listOf("${if (sales) "Sales" else "Purchase"} validation passed; numbering/lifecycle remain server-controlled"))
     val boot = (api.salesEntryBootstrap() as? ApiResult.Success)?.value
     val defaultTerm = paymentTermDefault(boot?.paymentTerms.orEmpty())
+    val documentItemCodes=s.rows.map{it.str("item_code")}.filter{it.isNotBlank()}.distinct()
+    val documentItems=(api.itemsByCodes(documentItemCodes) as? ApiResult.Success)?.value.orEmpty().associateBy{it.itemCode.uppercase()}
     var ok = 0
     val messages = mutableListOf<String>()
     for ((ref, rows) in groups) {
@@ -294,7 +298,7 @@ private suspend fun importDocs(api: DseErpHttpClient, s: ImportSheet, sales: Boo
         var bad: String? = null
         for (row in rows) {
             val itemCode = row.str("item_code")
-            val item = (api.searchItems(itemCode, 50) as? ApiResult.Success)?.value?.firstOrNull { it.itemCode.equals(itemCode, true) }
+            val item = documentItems[itemCode.uppercase()]
             if (item == null) { bad = "Item $itemCode not found"; break }
             val qty = row.num("quantity")
             val rate = row.num("rate")
